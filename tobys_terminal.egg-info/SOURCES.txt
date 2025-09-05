@@ -1,0 +1,7 @@
+setup.py
+tobys_terminal.egg-info/PKG-INFO
+tobys_terminal.egg-info/SOURCES.txt
+tobys_terminal.egg-info/dependency_links.txt
+tobys_terminal.egg-info/entry_points.txt
+tobys_terminal.egg-info/requires.txt
+tobys_terminal.egg-info/top_level.txt

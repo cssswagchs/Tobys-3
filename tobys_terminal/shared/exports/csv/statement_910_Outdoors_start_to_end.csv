@@ -1,0 +1,10 @@
+Date,Invoice #,PO #,Nickname,Amount,Status
+08/05/2020,11794,,Hats and Tees,711.24,Paid - Check 161
+08/26/2020,11967,,Patch Hats,138.84,Paid - Other Venmo
+10/07/2020,12352,,Hats and Tees,325.97,Paid - Other Venmo
+01/22/2021,13219,,Patch Hats,136.19,Paid - Check 172
+03/08/2021,13608,,Tees,179.97,Paid - Check 190
+
+,,Total Billed,1492.21,
+,,Total Paid,1492.21,
+,,Balance,0.00,Due

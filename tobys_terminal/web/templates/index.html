@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Customer Portal Directory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#fefaf2] text-[#0d5744]">
+  <div class="max-w-4xl mx-auto p-8">
+    <h1 class="text-3xl font-bold text-[#0d5744]">🐢 Toby’s Terminal</h1>
+    <p class="text-sm text-[#a45f2b] mt-1">CSS Billing Console</p>
+    <p class="mb-6 text-sm text-[#a45f2b]">Click a company below to view its statement register:</p>
+
+    <form class="mb-6">
+      <label class="text-sm mr-2">Filter by type:</label>
+      <select name="type" onchange="this.form.submit()" class="border rounded px-2 py-1">
+        <option value="">All</option>
+        <option value="Contract" {{ 'selected' if filter_type=='Contract' else '' }}>Contract</option>
+        <option value="Direct" {{ 'selected' if filter_type=='Direct' else '' }}>Direct</option>
+        <option value="Retail" {{ 'selected' if filter_type=='Retail' else '' }}>Retail</option>
+      </select>
+    </form>
+  <div class="text-sm text-right text-gray-500">
+    Logged in as <strong>{{ session.username }}</strong>
+    &middot;
+    <a href="{{ url_for('auth.logout') }}" class="underline text-[#0d5744]">Logout</a>
+  </div>
+ 
+  <!-- Filter buttons -->
+  <div class="flex flex-wrap gap-1 mb-4">
+    <a href="/" class="px-3 py-1 rounded border text-sm font-semibold {{ 'bg-[#0d5744] text-white' if not filter_letter else 'bg-gray-100 text-gray-700' }}">
+      All
+    </a>
+    {% for letter in letters %}
+      <a href="/?letter={{ letter }}" class="px-3 py-1 rounded border text-sm font-semibold 
+        {{ 'bg-[#0d5744] text-white' if filter_letter == letter else 'bg-gray-100 text-gray-700' }}">
+        {{ letter }}
+      </a>
+    {% endfor %}
+    {% for letter, company_list in grouped.items() %}
+  <h2 class="text-xl font-bold mt-6 mb-2 text-[#0d5744]">{{ letter }}</h2>
+  <ul class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
+    {% for company in company_list %}
+      <li>
+        <a href="/customer/{{ company }}" class="block px-4 py-2 rounded hover:bg-[#fefaf2] text-[#0d5744] border border-transparent hover:border-[#0d5744]">
+          {{ company }}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endfor %}
+
+  </div>
+
+    <ul class="space-y-2">
+      {% for company in companies %}
+      <li>
+        <a href="{{ url_for('customer_portal', company=company) }}"
+           class="block p-3 bg-white rounded-xl shadow hover:bg-gray-100">
+          {{ company }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+
+    {% if not companies %}
+    <div class="mt-6 text-gray-500">No customers found.</div>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,351 @@
+{% extends "layout.html" %}
+{% block title %}IMM Production Terminal{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto p-6">
+  <h2 class="text-2xl font-bold mb-4">📦 IMM Production Terminal</h2>
+  
+  <!-- Filter Controls -->
+  <div class="bg-white p-4 rounded-lg shadow mb-6">
+    <form method="GET" action="{{ url_for('imm.terminal') }}" class="flex flex-wrap gap-3 items-end">
+      <!-- Status Filter -->
+      <div>
+        <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <select name="status" id="status" class="border border-gray-300 rounded p-2 w-40">
+          <option value="">All Statuses</option>
+          {% for option in status_options %}
+          <option value="{{ option.status }}" {% if current_filters.status == option.status %}selected{% endif %}>
+            {{ option.status }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- Process Filter -->
+      <div>
+        <label for="process" class="block text-sm font-medium text-gray-700 mb-1">Process</label>
+        <select name="process" id="process" class="border border-gray-300 rounded p-2 w-32">
+          <option value="">All</option>
+          {% for option in process_options %}
+          <option value="{{ option.process }}" {% if current_filters.process == option.process %}selected{% endif %}>
+            {{ option.process }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- Firm Date Filter -->
+      <div>
+        <label for="firm_date" class="block text-sm font-medium text-gray-700 mb-1">Firm Date</label>
+        <select name="firm_date" id="firm_date" class="border border-gray-300 rounded p-2 w-32">
+          <option value="">All</option>
+          <option value="Yes" {% if current_filters.firm_date == "Yes" %}selected{% endif %}>Yes</option>
+          <option value="No" {% if current_filters.firm_date == "No" %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      
+      <!-- Search Box -->
+      <div>
+        <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+        <input type="text" name="search" id="search" value="{{ current_filters.search }}" 
+               placeholder="PO #, Project, Invoice #..." 
+               class="border border-gray-300 rounded p-2 w-64">
+      </div>
+      
+      <!-- Filter Buttons -->
+      <div class="flex gap-2">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          Apply Filters
+        </button>
+        <a href="{{ url_for('imm.terminal') }}" class="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">
+          Clear
+        </a>
+      </div>
+    </form>
+  </div>
+  
+  <!-- Add New Order button (only visible for users with manage_production permission) -->
+  {% if can_edit %}
+  <a href="{{ url_for('imm.new_order') }}"
+     class="mb-4 inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+    + Add New Order
+  </a>
+  {% endif %}
+
+  <!-- Add this right before the table in both templates -->
+<div class="flex justify-between items-center mb-2">
+  <div class="text-sm text-gray-600">
+    Showing <span class="font-semibold">{{ orders|length }}</span> orders
+  </div>
+  
+  {% if orders|length > 50 %}
+  <div class="text-xs text-amber-600">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    Large result set - consider using filters to improve performance
+  </div>
+  {% endif %}
+</div>
+
+  <!-- Orders Table -->
+  {% if can_edit %}
+  <form method="POST" action="{{ url_for('imm.update_orders') }}">
+  {% endif %}
+    <table class="table-auto w-full text-sm border border-gray-300">
+      <!-- Table Header -->
+      <thead class="bg-gray-100 text-left">
+        <tr>
+          <th class="border px-3 py-2">PO #</th>
+          <th class="border px-3 py-2">Project Name</th>
+          <th class="border px-3 py-2 cursor-pointer" data-sort="in_hand_date">In Hands Date</th>
+          <th class="border px-3 py-2">Firm Date</th>
+          <th class="border px-3 py-2 cursor-pointer" data-sort="invoice_number">Invoice #</th>
+          <th class="border px-3 py-2">Process</th>
+          <th class="border px-3 py-2">Status</th>
+          {% if is_admin %}
+          <th class="border px-3 py-2 cursor-pointer" data-sort="p_status">P-Status</th>
+          {% endif %}
+          <th class="border px-3 py-2">Notes</th>
+        </tr>
+      </thead>
+      
+      <!-- Table Body -->
+      <tbody class="divide-y divide-gray-200">
+        {% for order in orders %}
+        <tr class="{% if loop.index0 % 2 == 0 %}bg-white{% else %}bg-gray-50{% endif %} hover:bg-gray-100">
+          <!-- PO Number -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="po_number_{{ order.id }}" value="{{ order.po_number or '' }}" class="w-20 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.po_number or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Project Name -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="project_name_{{ order.id }}" value="{{ order.nickname or '' }}" class="w-60 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.nickname or '' }}
+            {% endif %}
+          </td>
+
+          <!-- In Hands Date -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="date" name="in_hands_{{ order.id }}" value="{{ order.customer_due_date or order.in_hand_date or '' }}" class="border border-gray-300 rounded p-1 w-full">
+            {% else %}
+            {{ order.customer_due_date or order.in_hand_date or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Firm Date Toggle -->
+          <td class="border px-3 py-2 text-center">
+            {% if can_edit %}
+            <button type="button"
+                    class="firm-toggle bg-{{ 'green' if order.firm_date == 'Yes' else 'red' }}-500 text-white px-2 py-1 rounded"
+                    data-id="{{ order.id }}"
+                    data-value="{{ order.firm_date }}">
+              {{ order.firm_date or 'No' }}
+            </button>
+            <input type="hidden" name="firm_date_{{ order.id }}" value="{{ order.firm_date or 'No' }}">
+            {% else %}
+            <span class="px-2 py-1 rounded text-white bg-{{ 'green' if order.firm_date == 'Yes' else 'red' }}-500">
+              {{ order.firm_date or 'No' }}
+            </span>
+            {% endif %}
+          </td>
+
+          <!-- Invoice Number -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="invoice_number_{{ order.id }}" value="{{ order.invoice_number or '' }}" class="w-20 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.invoice_number or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Process Dropdown -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="process_{{ order.id }}" class="w-full border border-gray-300 rounded p-1">
+              <option value="">--</option>
+              <option value="DTF" {% if order.process == "DTF" %}selected{% endif %}>DTF</option>
+              <option value="EMB" {% if order.process == "EMB" %}selected{% endif %}>EMB</option>
+              <option value="PAT" {% if order.process == "PAT" %}selected{% endif %}>PAT</option>
+              <option value="MIX" {% if order.process == "MIX" %}selected{% endif %}>MIX</option>
+            </select>
+            {% else %}
+            {{ order.process or '--' }}
+            {% endif %}
+          </td>
+
+          <!-- Status Dropdown -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="status_{{ order.id }}" class="w-full border border-gray-300 rounded p-1">
+              <option value="">--</option>
+              <option value="Waitng Product" {% if order.status == "Waitng Product" %}selected{% endif %}>Waitng Product</option>
+              <option value="Need Order" {% if order.status == "Need Order" %}selected{% endif %}>Need Order</option>
+              <option value="Need File" {% if order.status == "Need File" %}selected{% endif %}>Need File</option>
+              <option value="Need Sewout" {% if order.status == "Need Sewout" %}selected{% endif %}>Need Sewout</option>
+              <option value="Needs Approval" {% if order.status == "Needs Approval" %}selected{% endif %}>Needs Approval</option>
+              <option value="Inline-EMB" {% if order.status == "Inline-EMB" %}selected{% endif %}>Inline-EMB</option>
+              <option value="Inline-DTF" {% if order.status == "Inline-DTF" %}selected{% endif %}>Inline-DTF</option>
+              <option value="Inline-PAT" {% if order.status == "Inline-PAT" %}selected{% endif %}>Inline-PAT</option>
+              <option value="Complete and Ready for Pickup" {% if order.status == "Complete and Ready for Pickup" %}selected{% endif %}>Complete and Ready for Pickup</option>
+              <option value="Done" {% if order.status == "Done" %}selected{% endif %}>Done</option>
+            </select>
+            {% else %}
+            {{ order.status or '--' }}
+            {% endif %}
+          </td>
+
+          {% if is_admin %}
+          <!-- P-Status - Only visible to admins -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="p_status_{{ order.id }}" class="w-full border border-gray-300 rounded p-1">
+              <option value="" {% if not order.p_status %}selected{% endif %}>--</option>
+              <option value="Unset" {% if order.p_status == "Unset" %}selected{% endif %}>Unset</option>
+              <option value="Reviewed" {% if order.p_status == "Reviewed" %}selected{% endif %}>Reviewed</option>
+              <option value="Confirmed" {% if order.p_status == "Confirmed" %}selected{% endif %}>Confirmed</option>
+              <option value="Done" {% if order.p_status == "Done" %}selected{% endif %}>Done</option>
+              <option value="Template" {% if order.p_status == "Template" %}selected{% endif %}>Template</option>
+            </select>
+            {% else %}
+            {{ order.p_status or '--' }}
+            {% endif %}
+          </td>
+          {% endif %}
+
+          <!-- Notes -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="notes_{{ order.id }}" value="{{ order.notes or '' }}" class="w-full border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.notes or '' }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Submit Button (only shown for users with edit permissions) -->
+    {% if can_edit %}
+    <button type="submit" class="mt-4 px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+      Update Orders
+    </button>
+    </form>
+    {% endif %}
+
+    <!-- Report Generation Section -->
+    {% if 'view_production' in session.get('permissions', []) %}
+    <div class="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <h3 class="text-lg font-semibold mb-3">Export IMM Reports</h3>
+      <form action="{{ url_for('imm.generate_report') }}" method="get" class="flex items-end gap-3">
+        <div>
+          <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Filter by Status:</label>
+          <select name="status" id="status" class="border border-gray-300 rounded p-2 w-64">
+            <option value="Waitng Product">Waitng Product</option>
+            <option value="Need Order">Need Order</option>
+            <option value="Need File">Need File</option>
+            <option value="Need Sewout">Need Sewout</option>
+            <option value="Needs Approval">Needs Approval</option>
+            <option value="Inline-EMB">Inline-EMB</option>
+            <option value="Inline-DTF">Inline-DTF</option>
+            <option value="Inline-PAT">Inline-PAT</option>
+            <option value="Complete and Ready for Pickup">Complete and Ready for Pickup</option>
+            <option value="Done">Done</option>
+          </select>
+        </div>
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          Download PDF Report
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+    <!-- JavaScript for Toggle Buttons (only needed if user can edit) -->
+    {% if can_edit %}
+    <script>
+      // Toggle handler for Firm Date buttons
+      document.querySelectorAll('.firm-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+          const hiddenInput = button.nextElementSibling;
+          const current = hiddenInput.value;
+
+          // Toggle between Yes/No
+          const newVal = current === 'Yes' ? 'No' : 'Yes';
+          hiddenInput.value = newVal;
+          button.textContent = newVal;
+          
+          // Update button color
+          button.classList.toggle('bg-green-500');
+          button.classList.toggle('bg-red-500');
+        });
+      });
+    </script>
+    {% endif %}
+
+    <!-- Table Sorting JavaScript (works for both view and edit modes) -->
+    <script>
+      document.querySelectorAll('th[data-sort]').forEach(header => {
+        header.addEventListener('click', () => {
+          // Get table elements
+          const table = header.closest('table');
+          const tbody = table.querySelector('tbody');
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const columnIndex = Array.from(header.parentNode.children).indexOf(header);
+          const sortType = header.dataset.sort;
+
+          // Toggle sort direction
+          const direction = header.dataset.direction === "asc" ? "desc" : "asc";
+          header.dataset.direction = direction;
+
+          // Sort the rows
+          rows.sort((a, b) => {
+            // Get cell values
+            const aCell = a.children[columnIndex];
+            const bCell = b.children[columnIndex];
+            
+            // Look for input value first, then fallback to text content
+            const getCellValue = cell => {
+              const input = cell.querySelector('input, select');
+              if (input) return input.value.trim();
+              return cell.textContent.trim();
+            };
+
+            let aValue = getCellValue(aCell);
+            let bValue = getCellValue(bCell);
+
+            // Handle date sorting
+            if (sortType === 'in_hand_date') {
+              const aDate = aValue ? new Date(aValue) : new Date(0);
+              const bDate = bValue ? new Date(bValue) : new Date(0);
+              return direction === "asc" ? aDate - bDate : bDate - aDate;
+            }
+            
+            // Handle numeric sorting for invoice numbers
+            if (sortType === 'invoice_number') {
+              const aNum = parseInt(aValue) || 0;
+              const bNum = parseInt(bValue) || 0;
+              return direction === "asc" ? aNum - bNum : bNum - aNum;
+            }
+
+            // Default string comparison
+            return direction === "asc" 
+              ? aValue.localeCompare(bValue) 
+              : bValue.localeCompare(aValue);
+          });
+
+          // Rebuild the table with sorted rows
+          tbody.innerHTML = "";
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    </script>
+</div>
+{% endblock %}

@@ -1,0 +1,402 @@
+{% extends "layout.html" %}
+{% block title %}Harlestons Production Terminal{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto p-6">
+  <h2 class="text-2xl font-bold mb-4">🧵 Harlestons Production Terminal</h2>
+
+  <!-- Filter Controls -->
+  <div class="bg-white p-4 rounded-lg shadow mb-6">
+    <form method="GET" action="{{ url_for('harlestons.terminal') }}" class="flex flex-wrap gap-3 items-end">
+      <!-- Status Filter -->
+      <div>
+        <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <select name="status" id="status" class="border border-gray-300 rounded p-2 w-40">
+          <option value="">All Statuses</option>
+          {% for option in status_options %}
+          <option value="{{ option.status }}" {% if current_filters.status == option.status %}selected{% endif %}>
+            {{ option.status }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- Process Filter -->
+      <div>
+        <label for="process" class="block text-sm font-medium text-gray-700 mb-1">Process</label>
+        <select name="process" id="process" class="border border-gray-300 rounded p-2 w-32">
+          <option value="">All</option>
+          {% for option in process_options %}
+          <option value="{{ option.process }}" {% if current_filters.process == option.process %}selected{% endif %}>
+            {{ option.process }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- Location Filter -->
+      <div>
+        <label for="location" class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+        <select name="location" id="location" class="border border-gray-300 rounded p-2 w-32">
+          <option value="">All</option>
+          {% for option in location_options %}
+          <option value="{{ option.location }}" {% if current_filters.location == option.location %}selected{% endif %}>
+            {{ option.location }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- Search Box -->
+      <div>
+        <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+        <input type="text" name="search" id="search" value="{{ current_filters.search }}" 
+               placeholder="PO #, Club, Notes..." 
+               class="border border-gray-300 rounded p-2 w-64">
+      </div>
+      
+      <!-- Filter Buttons -->
+      <div class="flex gap-2">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+          Apply Filters
+        </button>
+        <a href="{{ url_for('harlestons.terminal') }}" class="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">
+          Clear
+        </a>
+      </div>
+    </form>
+  </div>
+
+  {% if can_edit %}
+  <!-- Editable notes form for users with manage_production permission -->
+  <form method="post" action="/harlestons/save_notes" class="mb-6">
+    <label for="global_notes" class="block font-semibold mb-1">Global Notes:</label>
+    <textarea name="global_notes" id="global_notes" rows="4" class="w-full border border-gray-300 rounded-md p-2">{{ global_notes }}</textarea>
+    <button type="submit" class="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save Notes</button>
+  </form>
+  {% else %}
+  <!-- Read-only notes display for view-only users -->
+  <div class="mb-6">
+    <h3 class="block font-semibold mb-1">Global Notes:</h3>
+    <div class="w-full border border-gray-300 rounded-md p-2 bg-gray-50">{{ global_notes }}</div>
+  </div>
+  {% endif %}
+
+  <!-- Add this right before the table in both templates -->
+  <div class="flex justify-between items-center mb-2">
+    <div class="text-sm text-gray-600">
+      Showing <span class="font-semibold">{{ orders|length }}</span> orders
+    </div>
+    
+    {% if orders|length > 50 %}
+    <div class="text-xs text-amber-600">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      Large result set - consider using filters to improve performance
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Production Orders Table -->
+  {% if can_edit %}
+  <!-- Editable form for users with manage_production permission -->
+  <form method="POST" action="{{ url_for('harlestons.update_orders') }}">
+  {% endif %}
+
+    <table class="table-auto w-full text-sm border border-gray-300">
+      <!-- Table Header -->
+      <thead class="bg-gray-100 text-left">
+        <tr>
+          <th class="border px-3 py-2">PO Number</th>
+          <th class="border px-3 py-2">My Order #</th>
+          <th class="border px-3 py-2">Club</th>
+          <th class="border px-3 py-2">Location</th>
+          <th class="border px-3 py-2">Process</th>
+          <th class="border px-3 py-2">Quantity</th>
+          <th class="border px-3 py-2 cursor-pointer" data-sort="status">Status</th>
+          {% if is_admin %}
+          <th class="border px-3 py-2 cursor-pointer" data-sort="p_status">P-Status</th>
+          {% endif %}
+          <th class="border px-3 py-2 cursor-pointer" data-sort="in_hand_date">In Hands Date</th>
+          <th class="border px-3 py-2 cursor-pointer" data-sort="priority">Priority</th>
+          <th class="border px-3 py-2">Notes</th>
+          <th class="border px-3 py-2">Inside?</th>
+          <th class="border px-3 py-2">Uploaded</th>
+        </tr>
+      </thead>
+      
+      <!-- Table Body -->
+      <tbody class="divide-y divide-gray-200">
+        {% for order in orders if order.status != 'Done' %}
+        <tr class="{% if loop.index0 % 2 == 0 %}bg-white{% else %}bg-gray-50{% endif %} hover:bg-gray-100">
+          
+          <!-- PO Number -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="po_number_{{ order.id }}" value="{{ order.po_number or '' }}" class="w-full border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.po_number or '' }}
+            {% endif %}
+          </td>
+
+          <!-- My Order # (Invoice Number) -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="invoice_number_{{ order.id }}" value="{{ order.invoice_number or '' }}" class="w-20 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.invoice_number or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Club Nickname -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="club_nickname_{{ order.id }}" value="{{ order.club_nickname or '' }}" class="w-64 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.club_nickname or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Location Dropdown -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="location_{{ order.id }}" class="w-full border border-gray-300 rounded p-1">
+              <option value="">--</option>
+              <option value="CSS" {% if order.location == "CSS" %}selected{% endif %}>CSS</option>
+              <option value="HAR" {% if order.location == "HAR" %}selected{% endif %}>HAR</option>
+              <option value="OTW" {% if order.location == "OTW" %}selected{% endif %}>OTW</option>
+            </select>
+            {% else %}
+            {{ order.location or '--' }}
+            {% endif %}
+          </td>
+
+          <!-- Process Type -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="process_{{ order.id }}" class="w-20 border border-gray-300 rounded p-1">
+              <option value="">--</option>
+              <option value="EMB" {% if order.process == "EMB" %}selected{% endif %}>EMB</option>
+              <option value="DTF" {% if order.process == "DTF" %}selected{% endif %}>DTF</option>
+            </select>
+            {% else %}
+            {{ order.process or '--' }}
+            {% endif %}
+          </td>
+
+          <!-- Quantity -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="number" name="pcs_{{ order.id }}" value="{{ order.pcs or '' }}" class="w-20 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.pcs or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Status -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="status_{{ order.id }}" class="w-20 border border-gray-300 rounded p-1">
+              <option value="" {% if not order.status %}selected{% endif %}>--</option>
+              <option value="Need Sewout" {% if order.status == "Need Sewout" %}selected{% endif %}>Need Sewout</option>
+              <option value="Needs Approval" {% if order.status == "Needs Approval" %}selected{% endif %}>Needs Approval</option>
+              <option value="Inline-EMB" {% if order.status == "Inline-EMB" %}selected{% endif %}>Inline-EMB</option>
+              <option value="Inline-DTF" {% if order.status == "Inline-DTF" %}selected{% endif %}>Inline-DTF</option>
+              <option value="On Hold" {% if order.status == 'On Hold' %}selected{% endif %}>On Hold</option>
+              <option value="Need Product" {% if order.status == 'Need Product' %}selected{% endif %}>Need Product</option>
+              <option value="Ready for Pickup" {% if order.status == 'Ready for Pickup' %}selected{% endif %}>Ready for Pickup</option>
+              <option value="Done" {% if order.status == 'Done' %}selected{% endif %}>Done</option>
+            </select>
+            {% else %}
+            {{ order.status or '--' }}
+            {% endif %}
+          </td>
+
+          {% if is_admin %}
+          <!-- P-Status - Only visible to admins -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="p_status_{{ order.id }}" class="w-full border border-gray-300 rounded p-1">
+              <option value="" {% if not order.p_status %}selected{% endif %}>--</option>
+              <option value="Unset" {% if order.p_status == "Unset" %}selected{% endif %}>Unset</option>
+              <option value="Reviewed" {% if order.p_status == "Reviewed" %}selected{% endif %}>Reviewed</option>
+              <option value="Confirmed" {% if order.p_status == "Confirmed" %}selected{% endif %}>Confirmed</option>
+              <option value="Done" {% if order.p_status == "Done" %}selected{% endif %}>Done</option>
+              <option value="Template" {% if order.p_status == "Template" %}selected{% endif %}>Template</option>
+            </select>
+            {% else %}
+            {{ order.p_status or '--' }}
+            {% endif %}
+          </td>
+          {% endif %}
+
+          <!-- In Hands Date -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="date" name="in_hands_{{ order.id }}" value="{{ order.in_hand_date or '' }}" class="w-full border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.in_hand_date or '' }}
+            {% endif %}
+          </td>
+
+          <!-- Priority -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <select name="priority_{{ order.id }}" class="w-full border border-gray-300 rounded p-1">
+              <option value="">--</option>
+              <option value="High" {% if order.priority == "High" %}selected{% endif %}>High</option>
+              <option value="Medium" {% if order.priority == "Medium" %}selected{% endif %}>Medium</option>
+              <option value="Low" {% if order.priority == "Low" %}selected{% endif %}>Low</option>
+            </select>
+            {% else %}
+            {{ order.priority or '--' }}
+            {% endif %}
+          </td>
+
+          <!-- Notes -->
+          <td class="border px-3 py-2">
+            {% if can_edit %}
+            <input type="text" name="notes_{{ order.id }}" value="{{ order.notes or '' }}" class="w-64 border border-gray-300 rounded p-1">
+            {% else %}
+            {{ order.notes or '' }}
+            {% endif %}
+          </td>
+          
+          <!-- Inside Location Toggle -->
+          <td class="border px-3 py-2 text-center">
+            {% if can_edit %}
+            <button type="button"
+                    class="inside-toggle bg-{{ 'green' if order.inside_location == 'Yes' else 'red' }}-500 text-white px-2 py-1 rounded"
+                    data-id="{{ order.id }}"
+                    data-value="{{ order.inside_location }}">
+              {{ order.inside_location or 'No' }}
+            </button>
+            <input type="hidden" name="inside_{{ order.id }}" value="{{ order.inside_location or 'No' }}">
+            {% else %}
+            <span class="px-2 py-1 rounded text-white bg-{{ 'green' if order.inside_location == 'Yes' else 'red' }}-500">
+              {{ order.inside_location or 'No' }}
+            </span>
+            {% endif %}
+          </td>
+          
+          <!-- Uploaded Toggle -->
+          <td class="border px-3 py-2 text-center">
+            {% if can_edit %}
+            <button type="button"
+                    class="uploaded-toggle bg-{{ 'green' if order.uploaded == 'Yes' or order.uploaded == 1 else 'red' }}-500 text-white px-2 py-1 rounded"
+                    data-id="{{ order.id }}"
+                    data-value="{{ order.uploaded }}">
+              {{ 'Yes' if order.uploaded == 'Yes' or order.uploaded == 1 else 'No' }}
+            </button>
+            <input type="hidden" name="uploaded_{{ order.id }}" value="{{ order.uploaded or 'No' }}">
+            {% else %}
+            <span class="px-2 py-1 rounded text-white bg-{{ 'green' if order.uploaded == 'Yes' or order.uploaded == 1 else 'red' }}-500">
+              {{ 'Yes' if order.uploaded == 'Yes' or order.uploaded == 1 else 'No' }}
+            </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Submit Button (only shown for users with edit permissions) -->
+    {% if can_edit %}
+    <button type="submit" class="mt-4 px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700">Update Orders</button>
+    </form>
+    {% endif %}
+
+    <!-- JavaScript for Toggle Buttons (only needed if user can edit) -->
+    {% if can_edit %}
+    <script>
+      // Toggle handler for Inside Location buttons
+      document.querySelectorAll('.inside-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+          const hiddenInput = button.nextElementSibling;
+          const current = hiddenInput.value;
+
+          // Toggle between Yes/No
+          const newVal = current === 'Yes' ? 'No' : 'Yes';
+          hiddenInput.value = newVal;
+          button.textContent = newVal;
+          
+          // Update button color
+          button.classList.toggle('bg-green-500');
+          button.classList.toggle('bg-red-500');
+        });
+      });
+
+      // Toggle handler for Uploaded buttons
+      document.querySelectorAll('.uploaded-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+          const hiddenInput = button.nextElementSibling;
+          const current = hiddenInput.value;
+
+          // Toggle between Yes/No
+          const newVal = current === 'Yes' ? 'No' : 'Yes';
+          hiddenInput.value = newVal;
+          button.textContent = newVal;
+          
+          // Update button color
+          button.classList.toggle('bg-green-500');
+          button.classList.toggle('bg-red-500');
+        });
+      });
+    </script>
+    {% endif %}
+
+    <!-- Table Sorting JavaScript (works for both view and edit modes) -->
+    <script>
+      document.querySelectorAll('th[data-sort]').forEach(header => {
+        header.addEventListener('click', () => {
+          // Get table elements
+          const table = header.closest('table');
+          const tbody = table.querySelector('tbody');
+          const rows = Array.from(tbody.querySelectorAll('tr'));
+          const columnIndex = Array.from(header.parentNode.children).indexOf(header);
+          const isDate = header.dataset.sort.includes("date");
+
+          // Toggle sort direction
+          const direction = header.dataset.direction === "asc" ? "desc" : "asc";
+          header.dataset.direction = direction;
+
+          // Sort the rows
+          rows.sort((a, b) => {
+            let aCell = a.children[columnIndex];
+            let bCell = b.children[columnIndex];
+
+            // Look for input/select value first, then fallback to text content
+            const getCellValue = cell => {
+              const input = cell.querySelector('input, select');
+              if (input) return input.value.trim();
+              return cell.textContent.trim();
+            };
+
+            let aText = getCellValue(aCell);
+            let bText = getCellValue(bCell);
+
+            // Handle date sorting
+            if (isDate) {
+              aText = new Date(aText);
+              bText = new Date(bText);
+            }
+
+            // Handle numeric sorting
+            if (!isNaN(aText) && !isNaN(bText)) {
+              return direction === "asc" ? aText - bText : bText - aText;
+            }
+
+            // Default to string comparison
+            return direction === "asc"
+              ? aText.localeCompare(bText)
+              : bText.localeCompare(aText);
+          });
+
+          // Rebuild the table with sorted rows
+          tbody.innerHTML = "";
+          rows.forEach(row => tbody.appendChild(row));
+        });
+      });
+    </script>
+</div>
+{% endblock %}

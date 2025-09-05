@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <title>Login – CSS Billing Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+
+
+<body class="bg-[#fefaf2] min-h-screen flex items-center justify-center px-4">
+
+  <div class="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl">
+    <div class="flex justify-center mb-4">
+  <img src="{{ url_for('static', filename='cssswag-logo.png') }}" alt="CSS Swag Logo" class="h-16">
+</div>
+
+    <h1 class="text-2xl font-bold text-[#0d5744] mb-2">Welcome to the CSS Billing Portal</h1>
+    <p class="text-sm text-gray-600 mb-6">Please log in to view your statements or invoices.</p>
+
+    <form method="POST" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Username</label>
+        <input name="username" type="text" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0d5744]">
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Password</label>
+        <input name="password" type="password" required class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0d5744]">
+      </div>
+
+      <button type="submit" class="w-full bg-[#0d5744] text-white py-2 rounded-lg hover:bg-[#0b4c3d] transition">
+        Log In
+      </button>
+    </form>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mt-4 text-sm text-red-600">
+          {% for category, message in messages %}
+            {{ message }}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+  </div>
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const form = document.querySelector("form");
+    const overlay = document.createElement("div");
+    overlay.innerHTML = `
+      <div class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center">
+          <svg class="animate-spin h-10 w-10 text-[#0d5744]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+          </svg>
+          <p class="mt-2 text-[#0d5744] font-medium">Signing you in...</p>
+        </div>
+      </div>
+    `;
+
+    if (form) {
+      form.addEventListener("submit", () => {
+        document.body.appendChild(overlay);
+      });
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ company }} — Statement Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card { @apply rounded-2xl shadow p-5 bg-white; }
+    .pill { @apply px-2 py-1 rounded-full text-xs font-semibold; }
+  </style>
+</head>
+<body class="bg-[#fefaf2]">
+  <div class="max-w-6xl mx-auto p-6">
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold text-[#0d5744]">Toby's Terminal - Customer Portal — {{ company }}</h1>
+      <p class="text-[#a45f2b]">Live statement register (read‑only)</p>
+    </header>
+  <div class="text-sm text-right text-gray-500">
+    Logged in as <strong>{{ session.username }}</strong>
+    &middot;
+    <a href="{{ url_for('auth.logout') }}" class="underline text-[#0d5744]">Logout</a>
+  </div>
+
+    <!-- Filters -->
+    <form class="flex flex-wrap gap-3 items-end mb-6">
+      <div>
+        <label class="block text-sm">Search (Statement # / Period)</label>
+        <input name="q" value="{{ q }}" class="border rounded-lg px-3 py-2 w-64" placeholder="e.g. S00087C or 01/01/2025">
+      </div>
+      <div>
+        <label class="block text-sm">Show</label>
+        <select name="show" class="border rounded-lg px-3 py-2">
+          <option value="all"   {{ 'selected' if show=='all' else '' }}>All</option>
+          <option value="due"   {{ 'selected' if show=='due' else '' }}>Due</option>
+          <option value="paid"  {{ 'selected' if show=='paid' else '' }}>Paid</option>
+          <option value="credit"{{ 'selected' if show=='credit' else '' }}>Credit</option>
+        </select>
+      </div>
+      <input type="hidden" name="company" value="{{ company }}">
+      <button class="bg-[#0d5744] text-white rounded-xl px-4 py-2">Apply</button>
+      <a class="ml-auto underline" href="/customer/{{ company }}/export.csv?q={{ q }}&show={{ show }}">Export CSV</a>
+    </form>
+
+    <!-- Summary tiles -->
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+      <div class="card">
+        <div class="text-sm text-gray-500">Invoices</div>
+        <div class="text-2xl font-bold">{{ totals.count }}</div>
+      </div>
+      <div class="card">
+        <div class="text-sm text-gray-500">Billed (filtered)</div>
+        <div class="text-2xl font-bold">{{ totals.billed|dollars }}</div>
+      </div>
+      <div class="card">
+        <div class="text-sm text-gray-500">Paid (filtered)</div>
+        <div class="text-2xl font-bold">{{ totals.paid|dollars }}</div>
+      </div>
+      <div class="card">
+        <div class="text-sm text-gray-500">Balance Snapshot (filtered)</div>
+        <div class="text-2xl font-bold {% if totals.balance>0 %}text-orange-600{% elif totals.balance<0 %}text-emerald-600{% endif %}">
+          {{ totals.balance|dollars }}
+        </div>
+        <div class="text-xs text-gray-500 mt-1">
+          Balance Snapshot reflects statements only and may not represent your current total owed.
+        </div>
+      </div>
+    </div>
+
+
+
+
+
+
+
+    <!-- Table -->
+    <div class="card overflow-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="bg-gray-100 text-gray-700">
+            <th class="text-left p-3">Statement #</th>
+            <th class="text-left p-3">Period</th>
+            <th class="text-right p-3">Invoices</th>
+            <th class="text-right p-3">Billed</th>
+            <th class="text-right p-3">Paid</th>
+            <th class="text-right p-3">Balance</th>
+            <th class="text-left p-3">Status</th>
+            <th class="text-left p-3">PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in rows %}
+          <tr class="border-t">
+            <td class="p-3 font-medium">{{ r.stmt }}</td>
+            <td class="p-3">{{ r.period }}</td>
+            <td class="p-3 text-right">{{ r.count }}</td>
+            <td class="p-3 text-right">{{ r.billed|dollars }}</td>
+            <td class="p-3 text-right">{{ r.paid|dollars }}</td>
+            <td class="p-3 text-right">{{ r.balance|dollars }}</td>
+            <td class="p-3">
+              {% if r.status == 'Paid' %}
+                <span class="pill bg-emerald-100 text-emerald-700">Paid</span>
+              {% elif r.status == 'Credit' %}
+                <span class="pill bg-blue-100 text-blue-700">Credit</span>
+              {% else %}
+                <span class="pill bg-orange-100 text-orange-700">Due</span>
+              {% endif %}
+            </td>
+              <td class="p-3">
+                <a 
+                  class="text-[#0d5744] underline" 
+                  href="/customer/{{ company }}/statement/{{ r.stmt }}/pdf" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                >
+                  Download
+                </a>
+              </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if not rows %}
+        <div class="text-center text-gray-500 py-6">No statements match your filters.</div>
+      {% endif %}
+    </div>
+
+    <footer class="text-xs text-gray-500 mt-6">
+      Data source: your billing DB (read‑only: invoices, payments_clean, statement_tracking, invoice_tracking). 
+    </footer>
+  </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const form = document.querySelector("form");
+    const overlay = document.createElement("div");
+    overlay.innerHTML = `
+      <div class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center">
+          <svg class="animate-spin h-10 w-10 text-[#0d5744]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+          </svg>
+          <p class="mt-2 text-[#0d5744] font-medium">Signing you in...</p>
+        </div>
+      </div>
+    `;
+
+    if (form) {
+      form.addEventListener("submit", () => {
+        document.body.appendChild(overlay);
+      });
+    }
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="max-w-6xl mx-auto p-6">
+  <header class="mb-6">
+    <h1 class="text-3xl font-bold text-[#0d5744]">Customer Portal — {{ company }}</h1>
+    <p class="text-[#a45f2b]">Invoice history (read‑only)</p>
+  </header>
+<form class="flex flex-wrap gap-3 items-end mb-6">
+  <div>
+    <label class="block text-sm">Search (Invoice # / PO)</label>
+    <input name="q" value="{{ request.args.q or '' }}" class="border rounded-lg px-3 py-2 w-64" placeholder="e.g. 30201 or MMG0624">
+  </div>
+  <div>
+    <label class="block text-sm">Status</label>
+    <select name="status" class="border rounded-lg px-3 py-2">
+      <option value="all"     {{ 'selected' if request.args.status=='all' else '' }}>All</option>
+      <option value="paid"    {{ 'selected' if request.args.status=='paid' else '' }}>Paid</option>
+      <option value="unpaid"  {{ 'selected' if request.args.status=='unpaid' else '' }}>Unpaid</option>
+    </select>
+  </div>
+  <input type="hidden" name="company" value="{{ company }}">
+  <button class="bg-[#0d5744] text-white rounded-xl px-4 py-2">Apply</button>
+  <a class="ml-auto underline" href="/customer/{{ company }}/invoices/export.csv?q={{ request.args.q or '' }}&status={{ request.args.status or 'all' }}">Export CSV</a>
+</form>
+<div class="text-sm text-right text-gray-500">
+  Logged in as <strong>{{ session.username }}</strong>
+  &middot;
+  <a href="{{ url_for('auth.logout') }}" class="underline text-[#0d5744]">Logout</a>
+</div>
+
+  <!-- Summary tiles -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="rounded-2xl shadow p-5 bg-white">
+      <div class="text-sm text-gray-500">Invoices</div>
+      <div class="text-2xl font-bold">{{ totals.count }}</div>
+    </div>
+    <div class="rounded-2xl shadow p-5 bg-white">
+      <div class="text-sm text-gray-500">Billed</div>
+      <div class="text-2xl font-bold">${{ "%.2f"|format(totals.billed) }}</div>
+    </div>
+    <div class="rounded-2xl shadow p-5 bg-white">
+      <div class="text-sm text-gray-500">Paid</div>
+      <div class="text-2xl font-bold">${{ "%.2f"|format(totals.paid) }}</div>
+    </div>
+  </div>
+
+  <!-- Invoice Table -->
+  <div class="rounded-2xl shadow p-5 bg-white overflow-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="bg-gray-100 text-gray-700">
+          <th class="text-left p-3">Invoice #</th>
+          <th class="text-left p-3">Date</th>
+          <th class="text-left p-3">PO #</th>
+          <th class="text-right p-3">Total</th>
+          <th class="text-right p-3">Paid</th>
+          <th class="text-left p-3">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr class="border-t">
+          <td class="p-3 font-medium">{{ inv.number }}</td>
+          <td class="p-3">{{ inv.date }}</td>
+          <td class="p-3">{{ inv.po or '' }}</td>
+          <td class="p-3 text-right">${{ "%.2f"|format(inv.total) }}</td>
+          <td class="p-3 text-right">${{ "%.2f"|format(inv.paid) }}</td>
+          <td class="p-3">
+            {% if inv.status == 'Paid' %}
+              <span class="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">Paid</span>
+            {% elif inv.status == 'Unpaid' %}
+              <span class="px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">Unpaid</span>
+            {% else %}
+              <span class="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{{ inv.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not invoices %}
+      <div class="text-center text-gray-500 py-6">No invoices found for this customer.</div>
+    {% endif %}
+  </div>
+
+  <footer class="text-xs text-gray-500 mt-6">
+    Data source: invoices table only (read-only view).
+  </footer>
+</div>
+{% endblock %}

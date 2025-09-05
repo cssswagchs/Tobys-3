@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block title %}Data Imaging Terminal{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto p-6">
+  <h2 class="text-2xl font-bold mb-4 text-purple-800">🖨️ Data Imaging Production Terminal</h2>
+
+  <table class="min-w-full border-collapse border">
+    <thead class="bg-gray-200 text-sm">
+      <tr>
+        <th class="border px-3 py-2">PO #</th>
+        <th class="border px-3 py-2">Project Name</th>
+        <th class="border px-3 py-2">In Hands Date</th>
+        <th class="border px-3 py-2">Firm</th>
+        <th class="border px-3 py-2">Invoice #</th>
+        <th class="border px-3 py-2">Process</th>
+        <th class="border px-3 py-2">Status</th>
+        <th class="border px-3 py-2">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td class="border px-3 py-2">{{ order["po_number"] }}</td>
+        <td class="border px-3 py-2">{{ order["nickname"] }}</td>
+        <td class="border px-3 py-2">{{ order["in_hand_date"] }}</td>
+        <td class="border px-3 py-2">{{ order["firm_date"] }}</td>
+        <td class="border px-3 py-2">{{ order["invoice_number"] }}</td>
+        <td class="border px-3 py-2">{{ order["process"] }}</td>
+        <td class="border px-3 py-2">{{ order["status"] }}</td>
+        <td class="border px-3 py-2">{{ order["notes"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="text-xs text-gray-500 mt-4">✨ Sorting and editing coming soon — this is the first view.</p>
+</div>
+{% endblock %}

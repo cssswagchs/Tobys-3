@@ -1,0 +1,3 @@
+[console_scripts]
+tobys-terminal = tobys_terminal.desktop.main:main
+tobys-web = tobys_terminal.web.app:main
