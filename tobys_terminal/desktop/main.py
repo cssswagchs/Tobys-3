@@ -1,12 +1,11 @@
+
 # main.py
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-# test 
+import threading
+
 # Update these imports to use the new package structure
-from tobys_terminal.desktop.importers.customers_import import import_customers
-from tobys_terminal.desktop.importers.orders_import import import_orders
-from tobys_terminal.desktop.importers.payments_import import import_payments
 from tobys_terminal.desktop.gui.statement_view import open_statement_view
 from tobys_terminal.desktop.gui.reconcile_view import open_reconcile_view
 from tobys_terminal.desktop.gui.ar_view import open_ar_view
@@ -19,23 +18,117 @@ from tobys_terminal.desktop.gui.harlestons_roster_view import open_harlestons_ro
 
 # Shared imports
 from tobys_terminal.shared.customer_utils import get_company_label
-from tobys_terminal.shared.import_printavo_orders import sync_printavo_orders_for_harlestons
 from tobys_terminal.shared.db import initialize_db, ensure_views
 from tobys_terminal.shared.db import get_connection, ensure_statement_tables, ensure_indexes, ensure_customer_profiles_table
 from tobys_terminal.shared.settings import ensure_settings_table
 from tobys_terminal.shared.settings import get_setting, set_setting
 
-def handle_import_customers():
-    import_customers()
-    messagebox.showinfo("Import Complete", "Customers imported successfully!")
+# Import the new printavo_sync functionality
+from tobys_terminal.shared.printavo_sync import sync_all, sync_imm_orders, sync_harlestons_orders, check_database
 
-def handle_import_orders():
-    import_orders()
-    messagebox.showinfo("Import Complete", "Orders imported successfully!")
+def handle_sync_all():
+    """Run the full Printavo synchronization process"""
+    # Show a progress indicator
+    progress_window = tk.Toplevel()
+    progress_window.title("Synchronizing with Printavo")
+    progress_window.geometry("400x150")
+    progress_window.transient()
+    progress_window.resizable(False, False)
+    
+    # Center the window
+    progress_window.update_idletasks()
+    width = progress_window.winfo_width()
+    height = progress_window.winfo_height()
+    x = (progress_window.winfo_screenwidth() // 2) - (width // 2)
+    y = (progress_window.winfo_screenheight() // 2) - (height // 2)
+    progress_window.geometry(f"{width}x{height}+{x}+{y}")
+    
+    # Add a label
+    ttk.Label(progress_window, text="Synchronizing with Printavo...", font=("Arial", 12)).pack(pady=20)
+    
+    # Add a progress bar
+    progress = ttk.Progressbar(progress_window, mode="indeterminate")
+    progress.pack(fill="x", padx=20, pady=10)
+    progress.start()
+    
+    # Run sync in a separate thread to keep UI responsive
+    def run_sync():
+        try:
+            result = sync_all()
+            progress_window.after(0, lambda: complete_sync(result))
+        except Exception as e:
+            progress_window.after(0, lambda: complete_sync(False, str(e)))
+    
+    def complete_sync(success, error_message=None):
+        progress.stop()
+        progress_window.destroy()
+        
+        if success:
+            messagebox.showinfo("Sync Complete", "Successfully synchronized with Printavo!")
+        else:
+            error_text = f"Error during synchronization: {error_message}" if error_message else "Synchronization failed."
+            messagebox.showerror("Sync Failed", error_text)
+    
+    # Start the thread
+    sync_thread = threading.Thread(target=run_sync)
+    sync_thread.daemon = True
+    sync_thread.start()
 
-def handle_import_payments():
-    import_payments()
-    messagebox.showinfo("Import Complete", "Payments imported successfully!")
+def handle_sync_imm():
+    """Sync only IMM orders from Printavo"""
+    try:
+        sync_imm_orders()
+        messagebox.showinfo("Sync Complete", "Successfully synchronized IMM orders from Printavo!")
+    except Exception as e:
+        messagebox.showerror("Sync Failed", f"Error synchronizing IMM orders: {str(e)}")
+
+def handle_sync_harlestons():
+    """Sync only Harlestons orders from Printavo"""
+    try:
+        sync_harlestons_orders()
+        messagebox.showinfo("Sync Complete", "Successfully synchronized Harlestons orders from Printavo!")
+    except Exception as e:
+        messagebox.showerror("Sync Failed", f"Error synchronizing Harlestons orders: {str(e)}")
+
+def handle_check_database():
+    """Run database check and display results"""
+    try:
+        # Create a text window to display results
+        result_window = tk.Toplevel()
+        result_window.title("Database Check Results")
+        result_window.geometry("600x400")
+        
+        # Add a text widget with scrollbar
+        text_frame = ttk.Frame(result_window)
+        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        text_widget = tk.Text(text_frame, wrap="word", yscrollcommand=scrollbar.set)
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=text_widget.yview)
+        
+        # Redirect output to the text widget
+        import io
+        import sys
+        
+        original_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        
+        # Run the check
+        check_database()
+        
+        # Get the output and restore stdout
+        output = sys.stdout.getvalue()
+        sys.stdout = original_stdout
+        
+        # Display the output
+        text_widget.insert("1.0", output)
+        text_widget.config(state="disabled")
+        
+    except Exception as e:
+        messagebox.showerror("Error", f"Error checking database: {str(e)}")
 
 def initialize_database():
     ensure_customer_profiles_table()
@@ -57,7 +150,8 @@ def show_oldest_open_invoice():
 
     if result:
         invoice_date, invoice_number = result
-        messagebox.showinfo("Oldest Open Invoice", f"Invoice #{invoice_number}\nDate: {invoice_date}")
+        messagebox.showinfo("Oldest Open Invoice", f"Invoice #{invoice_number}\
+Date: {invoice_date}")
     else:
         messagebox.showinfo("No Open Invoices", "All invoices are marked as paid.")
 
@@ -81,10 +175,14 @@ def main():
 
     # ----- menu bar
     menubar = tk.Menu(root)
+    
+    # File menu - replace old import commands with new sync commands
     filem = tk.Menu(menubar, tearoff=False)
-    filem.add_command(label="Import Customers…", command=handle_import_customers)
-    filem.add_command(label="Import Orders…", command=handle_import_orders)
-    filem.add_command(label="Import Payments…", command=handle_import_payments)
+    filem.add_command(label="\ud83d\udd04 Sync All Printavo Data", command=handle_sync_all)
+    filem.add_command(label="\ud83d\udd04 Sync IMM Orders", command=handle_sync_imm)
+    filem.add_command(label="\ud83d\udd04 Sync Harlestons Orders", command=handle_sync_harlestons)
+    filem.add_separator()
+    filem.add_command(label="\ud83d\udd0d Check Database", command=handle_check_database)
     filem.add_separator()
     filem.add_command(label="Exit", command=root.destroy)
     menubar.add_cascade(label="File", menu=filem)
@@ -101,7 +199,9 @@ def main():
     helpm = tk.Menu(menubar, tearoff=False)
     helpm.add_command(label="About", command=lambda: messagebox.showinfo(
         "About",
-        "CSS Billing\nPython + tkinter/ttk\nFast imports, statements, A/R dashboard."
+        "CSS Billing\
+Python + tkinter/ttk\
+Fast imports, statements, A/R dashboard."
     ))
     menubar.add_cascade(label="Help", menu=helpm)
 
@@ -115,8 +215,8 @@ def main():
     hdr = make_header(
         outer,
         "Toby's Terminal - CSS Billing",
-        "Sage’s sidekick for invoices, A/R, and statements",
-        icon_text="💼"
+        "Sage's sidekick for invoices, A/R, and statements",
+        icon_text="\ud83d\udcbc"
     )
     hdr.pack(fill="x", pady=(0, 8))
 
@@ -128,37 +228,41 @@ def main():
     left = ttk.Frame(body, style="Card.TFrame")
     left.pack(side="left", fill="y", padx=(0, 12))
 
-    grp_import = ttk.Labelframe(left, text="Import", style="Card.TLabelframe")
-    grp_import.pack(fill="x", pady=6)
-    ttk.Button(grp_import, text="📥 Import Customers", style="Primary.TButton",
-               command=handle_import_customers).pack(fill="x", pady=4)
-    ttk.Button(grp_import, text="📥 Import Orders", style="Primary.TButton",
-               command=handle_import_orders).pack(fill="x", pady=4)
-    ttk.Button(grp_import, text="📥 Import Payments", style="Primary.TButton",
-               command=handle_import_payments).pack(fill="x", pady=4)
+    # Replace Import section with Printavo Sync section
+    grp_sync = ttk.Labelframe(left, text="Printavo Sync", style="Card.TLabelframe")
+    grp_sync.pack(fill="x", pady=6)
+    ttk.Button(grp_sync, text="\ud83d\udd04 Sync All Data", style="Primary.TButton",
+               command=handle_sync_all).pack(fill="x", pady=4)
+    ttk.Button(grp_sync, text="\ud83d\udd04 Sync IMM Orders", style="Primary.TButton",
+               command=handle_sync_imm).pack(fill="x", pady=4)
+    ttk.Button(grp_sync, text="\ud83d\udd04 Sync Harlestons Orders", style="Primary.TButton",
+               command=handle_sync_harlestons).pack(fill="x", pady=4)
 
     grp_views = ttk.Labelframe(left, text="Views", style="Card.TLabelframe")
     grp_views.pack(fill="x", pady=6)
-    ttk.Button(grp_views, text="📄 Customer Statement", style="Primary.TButton",
+    ttk.Button(grp_views, text="\ud83d\udcc4 Customer Statement", style="Primary.TButton",
                command=open_statement_view).pack(fill="x", pady=4)
-    ttk.Button(grp_views, text="📊 A/R Report", style="Primary.TButton",
+    ttk.Button(grp_views, text="\ud83d\udcca A/R Report", style="Primary.TButton",
                command=open_ar_view).pack(fill="x", pady=4)
-    ttk.Button(grp_views, text="🔁 Reconcile Payments", style="Primary.TButton",
+    ttk.Button(grp_views, text="\ud83d\udd01 Reconcile Payments", style="Primary.TButton",
                command=open_reconcile_view).pack(fill="x", pady=4)
-    ttk.Button(grp_views, text="🧮 Payment Integrity Checker", style="Primary.TButton",
+    ttk.Button(grp_views, text="\ud83e\uddee Payment Integrity Checker", style="Primary.TButton",
                command=open_payment_checker).pack(fill="x", pady=4)
-    ttk.Button(grp_views, text="📚 Statement Register", style="Primary.TButton",
+    ttk.Button(grp_views, text="\ud83d\udcda Statement Register", style="Primary.TButton",
            command=open_statement_register).pack(fill="x", pady=4)
-    ttk.Button(grp_views, text="📄 Customer Viewer", style="Primary.TButton",
+    ttk.Button(grp_views, text="\ud83d\udcc4 Customer Viewer", style="Primary.TButton",
            command=open_contract_tagger).pack(fill="x", pady=4)
+    
     grp_utils = ttk.Labelframe(left, text="Utilities", style="Card.TLabelframe")
     grp_utils.pack(fill="x", pady=6)
-    ttk.Button(grp_utils, text="🕓 Oldest Open Invoice", style="Accent.TButton",
+    ttk.Button(grp_utils, text="\ud83d\udd53 Oldest Open Invoice", style="Accent.TButton",
                command=show_oldest_open_invoice).pack(fill="x", pady=4)
-    ttk.Button(grp_utils, text="📦 IMM Production",
+    ttk.Button(grp_utils, text="\ud83d\udce6 IMM Production",
                command=lambda: open_imm_roster_view("IMM")).pack(pady=4)
-    ttk.Button(grp_utils, text="🧵 Harlestons Production",
+    ttk.Button(grp_utils, text="\ud83e\uddf5 Harlestons Production",
                command=lambda: open_harlestons_roster_view("Harlestons")).pack(pady=4)
+    ttk.Button(grp_utils, text="\ud83d\udd0d Check Database", style="Accent.TButton",
+               command=handle_check_database).pack(fill="x", pady=4)
 
     ttk.Button(grp_utils, text="Exit", style="Primary.TButton",
                command=root.destroy).pack(fill="x", pady=8)
@@ -170,11 +274,17 @@ def main():
     tips = tk.Text(right, height=14, wrap="word", borderwidth=0,
                    bg=root._swag["paper"], fg="black")
     tips.insert("end",
-        "Welcome!\n\n"
-        "• Use the Import section to load CSVs from Printavo.\n"
-        "• Use Views for statements, reconciliation, or A/R aging.\n"
-        "• Keep CSV column names consistent between exports.\n"
-        "• All actions are keyboard-friendly: Tab/Enter work everywhere.\n"
+        "Welcome!\
+\
+"
+        "\u2022 Use the Printavo Sync section to synchronize data from Printavo.\
+"
+        "\u2022 Sync All Data will update customers, orders, and payments.\
+"
+        "\u2022 Use Views for statements, reconciliation, or A/R aging.\
+"
+        "\u2022 All actions are keyboard-friendly: Tab/Enter work everywhere.\
+"
     )
     tips.configure(state="disabled")
     tips.pack(fill="both", expand=True, pady=4)
@@ -206,9 +316,6 @@ def main():
         for key, value in kwargs.items():
             set_setting(key, value)
         messagebox.showinfo("Settings", "Settings saved successfully!")
-
-
-
 
     root.mainloop()
 

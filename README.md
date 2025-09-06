@@ -30,7 +30,7 @@ Toby's Terminal is a specialized application designed to manage invoices, custom
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/tobys-terminal.git
+   git clone https://github.com/cssswagchs/Tobys-3.git
    cd tobys-terminal
    ```
 
@@ -114,4 +114,12 @@ This project is proprietary and confidential. Unauthorized copying, distribution
 
 ## Author
 
-Developed by Toby for CSS Billing.
+Developed by Leslie for Toby's Terminal.
+
+
+cd tobys_terminal-3
+git remote add origin https://github.com/cssswagchs/Tobys-3.git
+git branch -M main
+git push -u origin main
+
+pip install -e .

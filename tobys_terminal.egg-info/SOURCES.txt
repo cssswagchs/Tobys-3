@@ -1,3 +1,4 @@
+README.md
 setup.py
 tobys_terminal.egg-info/PKG-INFO
 tobys_terminal.egg-info/SOURCES.txt

@@ -6,7 +6,7 @@ from tobys_terminal.shared.db import get_connection
 from tobys_terminal.shared.css_swag_colors import (FOREST_GREEN, PALM_GREEN, CORAL_ORANGE, COCONUT_CREAM, TAN_SAND, PALM_BARK)
 from tobys_terminal.shared.pdf_export import generate_imm_production_pdf
 from tobys_terminal.shared.order_utils import add_order
-from tobys_terminal.shared.date_util import create_date_picker, parse_date_input
+from tobys_terminal.shared.date_util import create_date_picker, parse_date_input, safe_set_date
 from tobys_terminal.shared.settings import get_setting, set_setting
 
 try:
@@ -31,8 +31,6 @@ COL_META = {
         "notes": {"db": "notes", "type": "entry"}
     }
 
-
-
 def open_imm_roster_view(company_name):
     win = tk.Toplevel()
     win.title(f"IMM Production – {company_name}")
@@ -41,11 +39,9 @@ def open_imm_roster_view(company_name):
 
     ttk.Label(win, text=f"📦 IMM Production Terminal", font=("Arial", 16, "bold")).pack(pady=10)
 
-
     # --- Global Notes Section ---
     notes_frame = ttk.Frame(win)
     notes_frame.pack(fill="x", padx=10, pady=(10, 0))
-
 
     ttk.Label(notes_frame, text="Global Notes:", font=("Arial", 10, "bold")).pack(anchor="w")
     notes_var = tk.StringVar()
@@ -64,6 +60,7 @@ def open_imm_roster_view(company_name):
 
     tree.tag_configure("evenrow", background=COCONUT_CREAM)  # light gray
     tree.tag_configure("oddrow", background=TAN_SAND)   # white
+    tree.tag_configure("highlight", background=PALM_GREEN)  # Highlight for newly matched rows
 
     headers = [
         ("po", "PO #", 80),
@@ -79,8 +76,17 @@ def open_imm_roster_view(company_name):
 
     for key, label, width in headers:
         tree.heading(key, text=label, command=lambda _key=key: sort_by(_key))
-
         tree.column(key, width=width)
+
+    # Add vertical scrollbar
+    vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+    vsb.pack(side='right', fill='y')
+    tree.configure(yscrollcommand=vsb.set)
+
+    # Add horizontal scrollbar
+    hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+    hsb.pack(side='bottom', fill='x')
+    tree.configure(xscrollcommand=hsb.set)
 
     add_frame = ttk.LabelFrame(win, text="➕ Add New Order")
     add_frame.pack(fill="x", padx=10, pady=6)
@@ -97,6 +103,8 @@ def open_imm_roster_view(company_name):
         # 👇 Swap entry for date picker if it's a date field
         if meta.get("type") == "entry_date":
             ent = create_date_picker(add_frame, width=12)
+        elif meta.get("type") == "combo":
+            ent = ttk.Combobox(add_frame, values=meta.get("options", []), width=14)
         else:
             ent = ttk.Entry(add_frame, width=14)
 
@@ -117,16 +125,62 @@ def open_imm_roster_view(company_name):
                         return
                     val = parsed
                 field_map[meta["db"]] = val
-        add_order("imm_orders", field_map)
+        
+        # Check if an order with this PO number already exists
+        po_number = field_map.get("po_number", "").strip()
+        if po_number:
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM imm_orders WHERE po_number = ?", (po_number,))
+            existing = cur.fetchone()
+            conn.close()
+            
+            if existing:
+                if messagebox.askyesno("PO Already Exists", 
+                                      f"An order with PO #{po_number} already exists. Update it?"):
+                    # Update existing order
+                    order_id = existing[0]
+                    conn = get_connection()
+                    cur = conn.cursor()
+                    
+                    # Build update query
+                    set_clauses = []
+                    values = []
+                    for db_field, value in field_map.items():
+                        if value:  # Only update non-empty fields
+                            set_clauses.append(f"{db_field} = ?")
+                            values.append(value)
+                    
+                    if set_clauses:
+                        query = f"UPDATE imm_orders SET {', '.join(set_clauses)} WHERE id = ?"
+                        values.append(order_id)
+                        cur.execute(query, values)
+                        conn.commit()
+                        conn.close()
+                        messagebox.showinfo("Success", f"Order with PO #{po_number} updated!")
+                    else:
+                        conn.close()
+                        messagebox.showinfo("No Changes", "No fields to update.")
+                else:
+                    return  # User chose not to update
+            else:
+                # Add new order
+                add_order("imm_orders", field_map)
+                messagebox.showinfo("Success", f"New order with PO #{po_number} added!")
+        else:
+            # No PO number provided, just add the order
+            add_order("imm_orders", field_map)
+            messagebox.showinfo("Success", "New order added!")
+            
         load_imm_orders()
         load_global_notes()
         for e in add_entries.values():
-            e.delete(0, tk.END)
+            if hasattr(e, 'delete'):
+                e.delete(0, tk.END)
+            elif hasattr(e, 'set'):
+                e.set('')
 
     ttk.Button(add_frame, text="➕ Add", command=submit_new_order).pack(side="left", padx=10)
-
-
-
 
     tree.pack(fill="both", expand=True)
 
@@ -140,14 +194,12 @@ def open_imm_roster_view(company_name):
         """Save global notes to settings"""
         notes_text = notes_entry.get("1.0", "end-1c")  # Get text without trailing newline
         set_setting('imm_notes', notes_text)
-        save_btn = ttk.Button(notes_frame, text="💾 Save Notes", command=save_global_notes)
-        save_btn.pack(anchor="e", pady=(0, 5))
+        messagebox.showinfo("Notes Saved", "Global notes have been saved.")
 
+    save_btn = ttk.Button(notes_frame, text="💾 Save Notes", command=save_global_notes)
+    save_btn.pack(anchor="e", pady=(0, 5))
+    
     load_global_notes()
-
-
-
-
 
     def sort_by(col_key, reverse=False):
         data = [(tree.set(child, col_key), child) for child in tree.get_children('')]
@@ -169,13 +221,12 @@ def open_imm_roster_view(company_name):
             tree.move(item, '', index)
 
         # Re-apply row striping
-            for i, item in enumerate(tree.get_children('')):
-                tag = "evenrow" if i % 2 == 0 else "oddrow"
-                tree.item(item, tags=(tag,))
+        for i, item in enumerate(tree.get_children('')):
+            tag = "evenrow" if i % 2 == 0 else "oddrow"
+            tree.item(item, tags=(tag,))
 
         # Toggle sort direction next time
         tree.heading(col_key, command=lambda: sort_by(col_key, not reverse))
-
 
     def load_imm_orders():
         tree.delete(*tree.get_children())
@@ -223,9 +274,7 @@ def open_imm_roster_view(company_name):
             
             tree.insert("", "end", iid=row[0], values=row[1:10], tags=(tag,))
 
-
     # --- Inline edit support ---
-
 
     def update_db(order_id: int, field: str, value: str):
         # Only allow columns from COL_META
@@ -242,22 +291,6 @@ def open_imm_roster_view(company_name):
         conn.commit()
         conn.close()
         load_imm_orders()
-
-
-    def parse_date_input(s: str) -> str | None:
-        """Accepts MM/DD/YYYY or YYYY-MM-DD and returns normalized YYYY-MM-DD string, or None if invalid"""
-        import datetime
-        s = s.strip()
-        if not s:
-            return ""
-        for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
-            try:
-                dt = datetime.datetime.strptime(s, fmt)
-                return dt.strftime("%Y-%m-%d")  # Save in standard format
-            except ValueError:
-                continue
-        return None
-
 
     _active_editor = {"widget": None}
 
@@ -279,7 +312,7 @@ def open_imm_roster_view(company_name):
         if not row_id or not col_id:
             return
 
-        cols = ["po", "project", "in_hand", "firm", "invoice", "process", "status", "notes"]  # adjust for Harlestons if needed
+        cols = ["po", "project", "in_hand", "firm", "invoice", "process", "status", "p_status", "notes"]
         try:
             col_index = int(col_id.replace("#", "")) - 1
         except:
@@ -311,7 +344,6 @@ def open_imm_roster_view(company_name):
         editor = None
 
         if meta["type"] == "entry_date":
-
             editor = create_date_picker(tree.master, width=12)
             try:
                 parsed_date = parse_date_input(curr_val)
@@ -366,6 +398,66 @@ def open_imm_roster_view(company_name):
     button_frame = ttk.Frame(win)
     button_frame.pack(pady=10)
 
+    def sync_with_printavo():
+        """Sync orders from Printavo"""
+        try:
+            # Show a progress indicator
+            progress_window = tk.Toplevel(win)
+            progress_window.title("Synchronizing with Printavo")
+            progress_window.geometry("400x150")
+            progress_window.transient(win)
+            progress_window.resizable(False, False)
+            
+            # Center the window
+            progress_window.update_idletasks()
+            width = progress_window.winfo_width()
+            height = progress_window.winfo_height()
+            x = (progress_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (progress_window.winfo_screenheight() // 2) - (height // 2)
+            progress_window.geometry(f"{width}x{height}+{x}+{y}")
+            
+            # Add a label
+            ttk.Label(progress_window, text="Synchronizing IMM orders from Printavo...", 
+                     font=("Arial", 12)).pack(pady=20)
+            
+            # Add a progress bar
+            progress = ttk.Progressbar(progress_window, mode="indeterminate")
+            progress.pack(fill="x", padx=20, pady=10)
+            progress.start()
+            
+            # Run sync in a separate thread to keep UI responsive
+            def run_sync():
+                try:
+                    from tobys_terminal.shared.printavo_sync import sync_imm_orders
+                    result = sync_imm_orders()
+                    progress_window.after(0, lambda: complete_sync(result))
+                except Exception as e:
+                    progress_window.after(0, lambda: complete_sync(False, str(e)))
+            
+            def complete_sync(success, error_message=None):
+                progress.stop()
+                progress_window.destroy()
+                
+                if success:
+                    messagebox.showinfo("Sync Complete", "Successfully synchronized IMM orders from Printavo!")
+                    load_imm_orders()  # Refresh the view
+                else:
+                    error_text = f"Error during synchronization: {error_message}" if error_message else "Synchronization failed."
+                    messagebox.showerror("Sync Failed", error_text)
+            
+            # Start the thread
+            import threading
+            sync_thread = threading.Thread(target=run_sync)
+            sync_thread.daemon = True
+            sync_thread.start()
+            
+        except ImportError:
+            messagebox.showerror("Module Not Found", 
+                               "The printavo_sync module is not available. Please make sure it's installed.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {str(e)}")
+
+    ttk.Button(button_frame, text="🔄 Sync from Printavo", command=sync_with_printavo).pack(side="left", padx=6)
     ttk.Button(button_frame, text="🔄 Refresh", command=load_imm_orders).pack(side="left", padx=6)
     ttk.Button(button_frame, text="Close", command=win.destroy).pack(side="right", padx=6)
 
@@ -379,7 +471,6 @@ def open_imm_roster_view(company_name):
     ttk.Button(button_frame, text="📄 Print Full IMM", command=lambda: print_pdf("full")).pack(side="left", padx=6)
     ttk.Button(button_frame, text="📄 Print Inline-EMB", command=lambda: print_pdf("emb")).pack(side="left", padx=6)
     ttk.Button(button_frame, text="📄 Print Inline-DTF", command=lambda: print_pdf("dtf")).pack(side="left", padx=6)
-
 
     def delete_selected_order():
         selected = tree.selection()
@@ -397,9 +488,5 @@ def open_imm_roster_view(company_name):
         load_imm_orders()
 
     ttk.Button(button_frame, text="🗑️ Delete", command=delete_selected_order).pack(side="left", padx=6)
-
-
-
-
 
     load_imm_orders()
