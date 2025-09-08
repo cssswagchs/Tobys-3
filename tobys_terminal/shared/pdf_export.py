@@ -1,23 +1,40 @@
-import sqlite3
-from reportlab.lib.pagesizes import LETTER, landscape
-from reportlab.pdfgen import canvas as _canvas
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
-)
-from reportlab.lib.units import inch
-from tkinter import messagebox
-from datetime import datetime
-from copy import deepcopy
-from collections import defaultdict
-import os, re
-import importlib.resources as pkg_resources
+"""
+PDF export functionality for Toby's Terminal application.
+Handles statement generation, production reports, and other PDF exports.
+"""
 
+# Standard library imports
+import os
+import re
+import sqlite3
+from datetime import datetime
+from collections import defaultdict
+from copy import deepcopy
+from  tobys_terminal.shared.css_swag_colors import FOREST_GREEN, PALM_GREEN, CORAL_ORANGE, COCONUT_CREAM, TAN_SAND, PALM_BARK
+# ReportLab imports
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import LETTER, letter, landscape
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfgen import canvas as _canvas
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, 
+    Image, KeepTogether
+)
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from flask import send_file, request
-from config import ASSETS_DIR, EXPORTS_DIR
-# Define paths using package resources
+
+from pathlib import Path
+    
+from tobys_terminal.shared.db import get_connection
+from config import PROJECT_ROOT  # Import PROJECT_ROOT from config
+
+
+
+
+# Tkinter imports (for interactive mode)
+from tkinter import messagebox
+
+# Package resource handling
 try:
     # For Python 3.9+
     from importlib.resources import files
@@ -29,9 +46,13 @@ except (ImportError, AttributeError):
     ASSETS_DIR = pkg_resources.resource_filename('tobys_terminal.shared', 'assets')
     EXPORTS_BASE_DIR = pkg_resources.resource_filename('tobys_terminal.shared', 'exports')
 
+# Local imports
+from tobys_terminal.shared.db import get_connection
 
 
+# Helper functions for text formatting
 def wrap_po_if_needed(po_number, font="Helvetica", font_size=10, max_width=1.2 * inch):
+    """Wrap PO numbers that are too long to fit in a cell."""
     if not po_number:
         return ""
 
@@ -56,6 +77,7 @@ def wrap_po_if_needed(po_number, font="Helvetica", font_size=10, max_width=1.2 *
 
 
 def wrap_status_if_needed(status_text, font="Helvetica", font_size=10, max_width=1.0 * inch):
+    """Wrap status text that is too long to fit in a cell."""
     if not status_text:
         return ""
     status_text = str(status_text).strip()
@@ -75,9 +97,16 @@ def wrap_status_if_needed(status_text, font="Helvetica", font_size=10, max_width
         return f"{status_text[:mid]}\n{status_text[mid:]}"
 
 
-
-
+# Main PDF generation functions
 def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_number, nickname=None, output_path=None, interactive=True):
+    """Generate a customer statement PDF."""
+    # Helper function for number conversion
+    def _num(x):
+        try:
+            return float(x or 0)
+        except Exception:
+            return 0.0
+            
     # ---------- filename / path ----------
     safe_name  = re.sub(r'[^a-zA-Z0-9_-]', '_', customer_name)
     safe_start = (start_date or "").replace("/", "-")
@@ -91,11 +120,8 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
     filename = f"{statement_number}_statement_{safe_name}_{date_str}.pdf"
     filepath = os.path.join(EXPORTS_DIR, filename)
 
-
-
     if interactive:
         # Prompt before overwriting (Tkinter app)
-        from tkinter import messagebox
         if os.path.exists(filepath):
             overwrite = messagebox.askyesno(
                 "Replace File?",
@@ -103,7 +129,6 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
                 "Do you want to replace it?"
             )
             if not overwrite:
-                #print("❌ Export cancelled by user.")
                 return None
     else:
         # Web/portal mode → move old version to "dnu" folder before overwriting
@@ -114,27 +139,19 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
             archived_path = os.path.join(DNU_DIR, archived_name)
             os.rename(filepath, archived_path)
 
-
     # ---------- doc / styles ----------
     doc = SimpleDocTemplate(
         filepath,
         pagesize=LETTER,
         leftMargin=50,
         rightMargin=50,
-        topMargin=40,    # ↓ was 80
+        topMargin=40,
         bottomMargin=50
     )
 
-    # top of generate_pdf() add this tiny helper
-    def _num(x):
-        try:
-            return float(x or 0)
-        except Exception:
-            return 0.0
-
-
     styles = getSampleStyleSheet()
     unpaid_rows, paid_rows = [], []
+    
     # ---------- helper: totals normalize ----------
     def _normalize_totals(_rows, _totals):
         if not _totals:
@@ -149,9 +166,6 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
 
     # ---------- merge payments into invoice status (keep only unique ref) ----------
     unpaid_rows, paid_rows = [], []
-    from collections import defaultdict
-
-    pay_index: dict[str, list[str]] = defaultdict(list)
     pay_index = defaultdict(list)
     for r in rows:
         dt, typ, inv = r[0], r[1], r[2]
@@ -185,19 +199,14 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
 
         (paid_rows if merged_status.startswith("Paid") else unpaid_rows).append(row)
 
-
-    # Build data rows WITHOUT bottom totals for now; we’ll decide after pass 1
+    # Build data rows WITHOUT bottom totals for now; we'll decide after pass 1
     header_row = ["Date", "Inv. #", "PO #", "Nickname", "Amount", "Status"]
-
     base_rows = [header_row] + unpaid_rows + paid_rows
-
 
     # ---------- compute totals once ----------
     totals = _normalize_totals(rows, totals)
 
     # ---------- masthead (tight grid that matches the table width = 6.4")
-    from reportlab.platypus import Table, TableStyle, Paragraph, Spacer, Image
-
     TABLE_W = 6.4 * inch     # your table colWidths sum: 1 + 1 + 2.2 + 1.2 + 1 = 6.4"
     COL_L  = 3.2 * inch      # split 50/50 so masthead width == table width
     COL_R  = 3.2 * inch
@@ -214,7 +223,7 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
     except Exception as e:
         print(f"⚠️ Logo load error: {e}")
         pass
-        pass
+    
     addr_style = styles["BodyText"]; addr_style.fontSize = 9
     left_rows += [
         [Paragraph("<b>CSS Embroidery & Print</b>", styles["Heading4"])],
@@ -232,8 +241,6 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
 
     # Right cell: title + meta as a tidy 2-col table
     title_style = styles["Title"]
-    # title_style.fontSize = 18
-    # title_style.leading = 20
     meta_style  = styles["Normal"]; meta_style.spaceAfter = 1
 
     kv = [
@@ -263,8 +270,7 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
         ("BOTTOMPADDING",(0,0), (-1,-1), 0),
     ]))
 
-
-    # Assemble a 2-row masthead grid. Row 1: left + right meta. Row 2 (we’ll fill right with totals on pass 2 if multi-page)
+    # Assemble a 2-row masthead grid. Row 1: left + right meta. Row 2 (we'll fill right with totals on pass 2 if multi-page)
     masthead_grid = Table(
         [[left_col, right_col],
         ["",      ""]],                        # placeholder row for totals box (keeps layout stable)
@@ -280,7 +286,6 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
     ]))
 
     header_flows = [masthead_grid, Spacer(1, 6)]
-
 
     # ---------- table factory (repeat header) ----------
     def _make_table(_data):
@@ -318,7 +323,6 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
         ]))
         return box
 
-
     # ---------- footer ----------
     def footer(c, d):
         c.saveState()
@@ -327,7 +331,6 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
         c.restoreState()
 
     # ---------- PASS 1: count pages ----------
-
     class _PageCountCanvas(_canvas.Canvas):
         def __init__(self, *args, page_count_sink=None, **kwargs):
             self._sink = page_count_sink
@@ -369,27 +372,20 @@ def generate_pdf(customer_name, rows, totals, start_date, end_date, statement_nu
     else:
         story_final = [deepcopy(masthead_grid), Spacer(1, 6), _make_table(final_rows)]
 
-
     doc.build(
         story_final,
         onFirstPage=footer,
         onLaterPages=footer
     )
-    #print(f"✅ PDF saved to: {filepath}")
     return filepath
 
 
 def generate_imm_status_report(status, rows, output_path=None):
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.pagesizes import LETTER
-    from reportlab.lib import colors
-    from datetime import datetime
-
+    """Generate a PDF report of IMM orders with a specific status."""
     filename = f"IMM_Status_{status}_{datetime.now():%Y%m%d}.pdf"
-    EXPORTS_DIR = os.path.join(EXPORTS_BASE_DIR, "imm_reports")
+    EXPORTS_DIR = EXPORTS_BASE_DIR
     os.makedirs(EXPORTS_DIR, exist_ok=True)
     filepath = os.path.join(EXPORTS_DIR, filename)
-
 
     doc = SimpleDocTemplate(filepath, pagesize=LETTER, leftMargin=50, rightMargin=50, topMargin=40, bottomMargin=50)
 
@@ -414,8 +410,9 @@ def generate_imm_status_report(status, rows, output_path=None):
     doc.build([header, spacer, t])
     return filepath
 
+
 def get_imm_orders_by_status(status):
-    from tobys_terminal.shared.db import get_connection
+    """Get all IMM orders with a specific status."""
     conn = get_connection()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -429,112 +426,216 @@ def get_imm_orders_by_status(status):
     return cursor.fetchall()
 
 
-
-
 def generate_imm_production_pdf(mode="full"):
-    # Connect to your terminal.db database
+    """
+    Generate a PDF of IMM production orders.
+    
+    Args:
+        mode (str): "full", "emb", or "dtf" to filter by process type
+    
+    Returns:
+        str: Path to the generated PDF file
+    """
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate
+    from reportlab.lib.units import inch
+    from datetime import datetime
+    import os
+    from pathlib import Path
+    
     from tobys_terminal.shared.db import get_connection
+    from tobys_terminal.shared.pdf_style import create_branded_pdf_elements, truncate_text
+    from config import PROJECT_ROOT
+    
+    # Create reports directory if it doesn't exist
+    REPORTS_DIR = PROJECT_ROOT / "imm_reports"
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    
+    # Set up the PDF document
+    today = datetime.now().strftime("%Y%m%d")
+    filename = f"IMM_Production_{mode}_{today}.pdf"
+    filepath = os.path.join(REPORTS_DIR, filename)
+    
+    doc = SimpleDocTemplate(
+        filepath,
+        pagesize=landscape(letter),
+        rightMargin=0.5*inch,
+        leftMargin=0.5*inch,
+        topMargin=0.5*inch,
+        bottomMargin=0.5*inch
+    )
+    
+    # Get the data
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     
-    # ... rest of the function ...
-
-
-    # Query the imm_orders table
-    cur.execute("""
-        SELECT po_number, nickname, in_hand_date, firm_date, invoice_number, process, status, notes
+    # Build the query based on mode
+    query = """
+        SELECT po_number, nickname, in_hand_date, firm_date, 
+               invoice_number, process, status, notes
         FROM imm_orders
-        WHERE LOWER(status) NOT IN ('done', 'complete', 'cancelled', 'archived', 'done done')
-        AND LOWER(IFNULL(p_status, '')) NOT IN ('picked up')
-        ORDER BY in_hand_date ASC
-    """)
-    orders = cur.fetchall()
+        WHERE status != 'Hidden'
+          AND LOWER(status) NOT IN ('cancelled', 'archived', 'done done')
+    """
+    
+    # Add filter based on mode
+    if mode.lower() == "emb":
+        query += " AND (process = 'EMB' OR status LIKE '%EMB%')"
+    elif mode.lower() == "dtf":
+        query += " AND (process = 'DTF' OR status LIKE '%DTF%')"
+    
+    # Add sorting
+    query += """
+        ORDER BY
+            CASE status
+                WHEN 'Inline-EMB' THEN 1
+                WHEN 'Inline-DTF' THEN 2
+                WHEN 'Inline-PAT' THEN 3
+                WHEN 'Need Sewout' THEN 4
+                WHEN 'Need Product' THEN 5
+                WHEN 'Need File' THEN 6
+                WHEN 'Need Approval' THEN 7
+                WHEN 'Complete' THEN 8
+                ELSE 9
+            END,
+            COALESCE(customer_due_date, in_hand_date) ASC
+    """
+    
+    cur.execute(query)
+    rows = cur.fetchall()
     conn.close()
-
-    # Prepare export folder
-    EXPORTS_DIR = os.path.join(EXPORTS_BASE_DIR, "imm_reports")
-    os.makedirs(EXPORTS_DIR, exist_ok=True)
-    today_str = datetime.now().strftime("%Y%m%d")
-    filename = f"IMM_Production_{mode}_{today_str}.pdf"
-    filepath = os.path.join(EXPORTS_DIR, filename)
-
-    doc = SimpleDocTemplate(filepath, pagesize=landscape(pagesize=LETTER), leftMargin=30, rightMargin=30, topMargin=30, bottomMargin=30)
-    styles = getSampleStyleSheet()
-    normal_style = styles["Normal"]
-    normal_style.wordWrap = 'CJK'
-
-    # Define table headers and widths
-    if mode == "full":
-        headers = ["PO", "Project Name", "In Hands", "Firm", "Invoice #", "Process", "Status", "Notes"]
-        col_widths = [0.7*inch, 1.8*inch, 1.0*inch, 0.7*inch, 1.0*inch, 1.0*inch, 1.6*inch, 3.3*inch]
-    else:
-        headers = ["PO", "Project Name", "In Hands", "Firm", "Invoice #", "Status", ""]  # blank column at end
-        col_widths = [0.7*inch, 1.8*inch, 1.0*inch, 0.7*inch, 1.0*inch, 1.6*inch, 2.5*inch]
-
-    # Prepare filtered data rows
-    rows = []
-    for order in orders:
-        status = order["status"]
-        if mode == "emb" and status != "Inline-EMB":
-            continue
-        if mode == "dtf" and status != "Inline-DTF":
-            continue
-
-        in_hand_fmt = ""
-        try:
-            in_hand_fmt = datetime.strptime(order["in_hand_date"], "%Y-%m-%d").strftime("%m/%d/%Y")
-        except:
-            in_hand_fmt = order["in_hand_date"] or ""
-
-        firm_display = "Yes" if str(order["firm_date"]).lower().startswith("y") else "No"
-
-        if mode == "full":
-            rows.append([
-                order["po_number"],
-                order["nickname"],
-                in_hand_fmt,
-                firm_display,
-                order["invoice_number"],
-                order["process"],
-                order["status"],
-                Paragraph(order["notes"] or "", normal_style)
-            ])
-        else:
-            rows.append([
-                order["po_number"],
-                order["nickname"],
-                in_hand_fmt,
-                firm_display,
-                order["invoice_number"],
-                order["status"],
-                ""  # blank column
-            ])
-
-    # Build table
-    table_data = [headers] + rows
-    table = Table(table_data, colWidths=col_widths, repeatRows=1, hAlign="LEFT")
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightcyan]),
-    ]))
-
-    title_text = f"IMM Production – {'FULL' if mode == 'full' else mode.upper()} – {datetime.now().strftime('%B %d, %Y')}"
-    story = [Paragraph(title_text, styles["Title"]), Spacer(1, 12), table]
-
-    doc.build(story)
+    
+    # Format the data
+    data = [["PO #", "Project Name", "In Hands", "Firm", "Invoice #", "Process", "Status", "Notes"]]
+    
+    for row in rows:
+        formatted_row = list(row)
+        
+        # Truncate project name (index 1) to prevent overflow
+        if formatted_row[1]:
+            formatted_row[1] = truncate_text(formatted_row[1], max_length=25)
+        
+        # Format date (index 2) from YYYY-MM-DD to MM/DD/YYYY
+        if formatted_row[2]:
+            try:
+                formatted_row[2] = datetime.strptime(formatted_row[2], "%Y-%m-%d").strftime("%m/%d/%Y")
+            except ValueError:
+                pass  # Leave as is if invalid
+        
+        # Fix the issue with notes containing the status text
+        if formatted_row[7] and formatted_row[6]:
+            if formatted_row[7].startswith(formatted_row[6]):
+                formatted_row[7] = formatted_row[7][len(formatted_row[6]):].strip()
+            
+            # Also truncate notes if they're too long
+            formatted_row[7] = truncate_text(formatted_row[7], max_length=40)
+        
+        data.append(formatted_row)
+    
+    # Set column widths (adjust as needed)
+    col_widths = [0.8*inch, 2.5*inch, 0.8*inch, 0.5*inch, 0.8*inch, 0.8*inch, 1.2*inch, 2.3*inch]
+    
+    # Create PDF elements with branded styling
+    title = f"IMM Production – {mode.upper()} – {datetime.now().strftime('%B %d, %Y')}"
+    elements, _ = create_branded_pdf_elements(title, data, col_widths)
+    
+    # Build the PDF
+    doc.build(elements)
+    
     return filepath
 
 
-if __name__ == "__main__":
-    # Run all three versions now to confirm they're working
-    full_path = generate_imm_production_pdf(mode="full")
-    emb_path = generate_imm_production_pdf(mode="emb")
-    dtf_path = generate_imm_production_pdf(mode="dtf")
-    print(full_path, emb_path, dtf_path)
 
+
+
+
+
+def generate_harlestons_production_pdf():
+    """Generate a PDF of the Harlestons production roster."""
+    from tobys_terminal.shared.db import get_connection
+    
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    # Use the same query as in the terminal view to ensure consistency
+    query = """
+        SELECT po_number, location, club_nickname, process, invoice_number, 
+               pcs, priority, in_hand_date, status, notes
+        FROM harlestons_orders
+        WHERE
+            status != 'Hidden'
+            AND LOWER(status) NOT IN ('cancelled', 'archived')
+        ORDER BY in_hand_date ASC
+    """
+    
+    cur.execute(query)
+    rows = cur.fetchall()
+    conn.close()
+    
+    # Format the data for the PDF
+    data = []
+    
+    # Add headers
+    headers = ["PO #", "Loc", "Club", "Process", "Invoice #", "PCS", "Priority", "Due Date", "Status", "Notes"]
+    data.append(headers)
+    
+    # Add rows
+    for row in rows:
+        formatted_row = list(row)
+        
+        # Format date if it exists
+        if row[7]:  # in_hand_date
+            try:
+                formatted_row[7] = datetime.strptime(row[7], "%Y-%m-%d").strftime("%m/%d/%Y")
+            except ValueError:
+                pass  # Keep as is if invalid
+        
+        data.append(formatted_row)
+    
+    # Create the PDF
+    today = datetime.now().strftime("%Y%m%d")
+    filename = f"Harlestons_Production_{today}.pdf"
+    export_dir = os.path.join(EXPORTS_BASE_DIR, "harlestons_reports")
+    os.makedirs(export_dir, exist_ok=True)
+    filepath = os.path.join(export_dir, filename)
+    
+    doc = SimpleDocTemplate(filepath, pagesize=landscape(letter))
+    elements = []
+    
+    # Add title
+    styles = getSampleStyleSheet()
+    title = Paragraph(f"Harlestons Production – {datetime.now().strftime('%B %d, %Y')}", styles["Title"])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+    
+    # Create table
+    table = Table(data)
+    
+    # Style the table
+    style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkgreen),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+    ])
+    
+    # Add alternating row colors
+    for i in range(1, len(data)):
+        if i % 2 == 0:
+            style.add('BACKGROUND', (0, i), (-1, i), colors.lightgrey)
+    
+    table.setStyle(style)
+    elements.append(table)
+    
+    # Build the PDF
+    doc.build(elements)
+    
+    return filepath

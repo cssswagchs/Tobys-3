@@ -6,41 +6,66 @@ import re
 import sys
 import subprocess
 
+from tkcalendar import DateEntry
+
 from tobys_terminal.shared.db import get_connection, generate_statement_number
 from tobys_terminal.shared.statement_logic import StatementCalculator
 from tobys_terminal.shared.pdf_export import generate_pdf
 from tobys_terminal.shared.customer_utils import get_customer_ids_by_company
 
-def open_customer_statement_creator(preselect):
+def open_customer_statement_creator(preselect=""):
     win = tk.Toplevel()
-    win.title(f"Generate Statement – {preselect}")
+    win.title("Customer Statement Creator")
     win.geometry("900x600")
-    win.grab_set()
-    ttk.Label(win, text=f"Generate Statement for: {preselect}", font=("Arial", 14, "bold")).pack(pady=10)
+    win.resizable(True, True)
 
-    # Date filter section
+    # Header
+    header = ttk.Label(win, text=f"Statement Creator - {preselect}", font=("Arial", 14, "bold"))
+    header.pack(pady=10)
+
+    # Form frame
     form = ttk.Frame(win)
     form.pack(pady=5)
 
-    ttk.Label(form, text="Start Date (MM/DD/YYYY):").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-    start_entry = ttk.Entry(form)
+    # Create date entries directly like in the test file
+    ttk.Label(form, text="Start Date:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+    
+    # Create DateEntry directly with simple styling
+    start_entry = DateEntry(
+        form,
+        width=12,
+        background="darkgreen",  # Use simple color names first
+        foreground="white",
+        borderwidth=2,
+        date_pattern='mm/dd/yyyy'
+    )
     start_entry.grid(row=0, column=1, padx=5)
 
-    ttk.Label(form, text="End Date (MM/DD/YYYY):").grid(row=0, column=2, padx=5, pady=5, sticky="e")
-    end_entry = ttk.Entry(form)
+    ttk.Label(form, text="End Date:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
+    
+    # Create DateEntry directly with simple styling
+    end_entry = DateEntry(
+        form,
+        width=12,
+        background="darkgreen",  # Use simple color names first
+        foreground="white",
+        borderwidth=2,
+        date_pattern='mm/dd/yyyy'
+    )
     end_entry.grid(row=0, column=3, padx=5)
 
     unpaid_var = tk.BooleanVar(value=False)
     ttk.Checkbutton(form, text="Unpaid Invoices Only", variable=unpaid_var).grid(row=1, column=0, columnspan=2, padx=5, sticky="w")
 
-    # Treeview
-    tree = ttk.Treeview(win, columns=("Date", "Type", "Invoice", "PO", "Amount", "Status"), show="headings")
-    tree.heading("Date", text="Date")
-    tree.heading("Type", text="Type")
-    tree.heading("Invoice", text="Invoice #")
-    tree.heading("PO", text="PO #")
-    tree.heading("Amount", text="Amount")
-    tree.heading("Status", text="Status")
+    # Buttons
+    btn_frame = ttk.Frame(win)
+    btn_frame.pack(pady=5)
+
+    tree = ttk.Treeview(win, columns=("Date", "Type", "Invoice", "PO", "Amount", "Balance"), show="headings")
+    for col in ("Date", "Type", "Invoice", "PO", "Amount", "Balance"):
+        tree.heading(col, text=col)
+        tree.column(col, width=100)
+
     tree.pack(fill="both", expand=True, pady=10, padx=10)
 
     total_label = ttk.Label(win, text="", font=("Arial", 11, "bold"))
@@ -55,25 +80,28 @@ def open_customer_statement_creator(preselect):
         return None
 
     def load_data():
+    # Your existing load_data function
         tree.delete(*tree.get_children())
         ids = get_customer_ids_by_company(preselect)
         if not ids:
             messagebox.showerror("Missing", f"No customer ID found for {preselect}")
             return
 
-        start = parse_date(start_entry.get())
-        end = parse_date(end_entry.get())
-        if (start_entry.get() and not start) or (end_entry.get() and not end):
-            messagebox.showerror("Invalid Date", "Please use MM/DD/YYYY format.")
-            return
-
+        start = start_entry.get_date() if start_entry.get() else None
+        end = end_entry.get_date() if end_entry.get() else None
+        
+        # For statements, we want ALL orders regardless of status
         calc = StatementCalculator(
             customer_ids=ids,
             start_date=start,
             end_date=end,
-            unpaid_only=unpaid_var.get()
+            unpaid_only=unpaid_var.get(),
+            include_hidden=True  # Make sure your StatementCalculator has this parameter
         )
         rows, totals = calc.fetch()
+    
+    # Rest of your function...
+
 
         for row in rows:
             dt = row[0].strftime("%m/%d/%Y") if hasattr(row[0], "strftime") else str(row[0])
@@ -81,29 +109,20 @@ def open_customer_statement_creator(preselect):
             inv = row[2]
             po = row[5] if len(row) > 5 and typ == "Invoice" else ""
             amt = f"${float(row[3]):,.2f}"
-            status = row[4]
-            tree.insert("", "end", values=(dt, typ, inv, po, amt, status))
+            bal = f"${float(row[4]):,.2f}" if row[4] else "$0.00"
+            tree.insert("", "end", values=(dt, typ, inv, po, amt, bal))
 
-        total_label.config(
-            text=f"Billed: ${totals['billed']:,.2f} | Paid: ${totals['paid']:,.2f} | Balance: ${totals['balance']:,.2f}"
-        )
+        total_label.config(text=f"Total: ${totals['total']:,.2f} | Outstanding: ${totals['outstanding']:,.2f}")
 
-    def export_and_close():
+    def export_to_pdf():
         ids = get_customer_ids_by_company(preselect)
         if not ids:
             messagebox.showerror("Missing", f"No customer ID found for {preselect}")
             return
 
-        start_text = start_entry.get().strip()
-        end_text = end_entry.get().strip()
-        start = parse_date(start_text)
-        end = parse_date(end_text)
-
-        if not start or not end:
-            messagebox.showerror("Missing Dates", "Please enter valid start and end dates.")
-            return
-
-        # Fetch data again
+        start = start_entry.get_date()
+        end = end_entry.get_date()
+        
         calc = StatementCalculator(
             customer_ids=ids,
             start_date=start,
@@ -122,8 +141,8 @@ def open_customer_statement_creator(preselect):
         # Generate statement number
         statement_number = generate_statement_number(
             customer_id=ids,
-            start_date=start_text,
-            end_date=end_text,
+            start_date=start.strftime("%m/%d/%Y"),
+            end_date=end.strftime("%m/%d/%Y"),
             company_label=preselect,
             customer_ids_list=ids
         )
@@ -133,8 +152,8 @@ def open_customer_statement_creator(preselect):
             customer_name=preselect,
             rows=export_rows,
             totals=totals,
-            start_date=start_text,
-            end_date=end_text,
+            start_date=start.strftime("%m/%d/%Y"),
+            end_date=end.strftime("%m/%d/%Y"),
             statement_number=statement_number
         )
 
@@ -146,13 +165,12 @@ def open_customer_statement_creator(preselect):
                 subprocess.Popen(["start", "", os.path.join(export_dir, fname)], shell=True)
                 break
 
-        messagebox.showinfo("Done", f"Statement {statement_number} generated and opened.")
-        win.destroy()
+    ttk.Button(btn_frame, text="Load Data", command=load_data).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Export PDF", command=export_to_pdf).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
 
-    # Buttons
-    button_frame = ttk.Frame(win)
-    button_frame.pack(pady=10)
+    # Pre-load data if preselect is provided
+    if preselect:
+        load_data()
 
-    ttk.Button(button_frame, text="📄 Preview Invoices", command=load_data).pack(side="left", padx=10)
-    ttk.Button(button_frame, text="💾 Generate Statement", command=export_and_close).pack(side="left", padx=10)
-    ttk.Button(button_frame, text="Cancel", command=win.destroy).pack(side="right", padx=10)
+    win.focus_set()

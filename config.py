@@ -98,9 +98,8 @@ P_STATUS = (
 
 # Function to get database connection path
 def get_db_path():
-    """Return the database path, creating parent directories if needed"""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    return str(DB_PATH)
+    """Get the path to the database file"""
+    return os.path.join(os.path.dirname(__file__), 'terminal.db')
 
 # Statuses to exclude from production terminals
 EXCLUDED_STATUSES = {
@@ -112,16 +111,120 @@ EXCLUDED_STATUSES = {
 EXCLUDED_P_STATUSES = {
     'done', 'template', 'DONE DONE', 'complete', 'cancelled', 'archived', 'shipped',
     'picked up', 'harlestons -- invoiced', 'harlestons -- no order pending',
-    'harlestons -- picked up', 'harlestons-need sewout'
+    'harlestons -- picked up'
 }
 
-# Harlestons-specific exclusions
+# Customer IDs for main customers
+IMM_CUSTOMER_ID = 4246724
+HARLESTONS_CUSTOMER_ID = 5005118
+
+# Lists of customer IDs for each company
+IMM_CUSTOMER_IDS = [4246724]  # Add any additional IMM-related customer IDs here
+HARLESTONS_CUSTOMER_IDS = [5005118]  # Add any additional Harlestons-related customer IDs here
+
+
+# New filters for financial views - more permissive
+FINANCIAL_EXCLUDED_STATUSES = {
+    'cancelled', 'archived'  # Only exclude truly cancelled orders
+}
+
+FINANCIAL_EXCLUDED_P_STATUSES = {
+    'cancelled', 'archived'  # Only exclude truly cancelled orders
+}
+
+# Company-specific versions
 HARLESTONS_EXCLUDED_STATUSES = EXCLUDED_STATUSES
 HARLESTONS_EXCLUDED_P_STATUSES = EXCLUDED_P_STATUSES | {
     'harlestons -- invoiced', 'harlestons -- no order pending',
-    'harlestons -- picked up', 'harlestons-need sewout'
+    'harlestons -- picked up'
 }
-
-# IMM-specific exclusions
 IMM_EXCLUDED_STATUSES = EXCLUDED_STATUSES
 IMM_EXCLUDED_P_STATUSES = EXCLUDED_P_STATUSES
+
+# Financial versions
+HARLESTONS_FINANCIAL_EXCLUDED_STATUSES = FINANCIAL_EXCLUDED_STATUSES
+HARLESTONS_FINANCIAL_EXCLUDED_P_STATUSES = FINANCIAL_EXCLUDED_P_STATUSES
+IMM_FINANCIAL_EXCLUDED_STATUSES = FINANCIAL_EXCLUDED_STATUSES
+IMM_FINANCIAL_EXCLUDED_P_STATUSES = FINANCIAL_EXCLUDED_P_STATUSES
+
+
+# Field type definitions for formatting
+FIELD_TYPES = {
+    'invoice_number': 'invoice',
+    'po_number': 'po',
+    'pcs': 'numeric',
+    'in_hand_date': 'date',
+    'customer_due_date': 'date',
+    'firm_date': 'boolean',  # Yes/No field
+    'club_colors': 'boolean',
+    'colors_verified': 'boolean',
+    'inside_location': 'boolean',
+    'uploaded': 'boolean',
+}
+# Invoice number formatting
+def format_invoice_number(invoice_num, for_display=True):
+    """
+    Format invoice numbers consistently throughout the application.
+    
+    Args:
+        invoice_num: The invoice number to format (can be int, float, or string)
+        for_display (bool): If True, formats for UI display; if False, formats for database storage
+        
+    Returns:
+        str: Formatted invoice number
+    """
+    if invoice_num is None or invoice_num == "":
+        return ""
+        
+    try:
+        # Convert to integer to remove decimal part
+        num = int(float(invoice_num))
+        return str(num)
+    except (ValueError, TypeError):
+        # If it's not a valid number, return as-is
+        return str(invoice_num)
+
+# Function to clean display values
+def clean_display_value(value, field_type):
+    """
+    Clean up values for display based on their field type.
+    
+    Args:
+        value: The value to clean
+        field_type (str): The type of field ('invoice', 'po', 'numeric', 'date', 'boolean', etc.)
+        
+    Returns:
+        The cleaned value ready for display
+    """
+    if value is None or value == "":
+        return ""
+        
+    if field_type in ['invoice', 'po', 'numeric']:
+        try:
+            return str(int(float(value)))
+        except (ValueError, TypeError):
+            return str(value)
+            
+    if field_type == 'date' and value:
+        try:
+            # Convert from database format to display format
+            date_obj = datetime.strptime(str(value), DATE_FORMAT)
+            return date_obj.strftime(DATE_DISPLAY_FORMAT)
+        except (ValueError, TypeError):
+            return value
+    
+    if field_type == 'boolean':
+        # Handle yes/no fields
+        if isinstance(value, bool):
+            return "Yes" if value else "No"
+        elif isinstance(value, (int, float)):
+            return "Yes" if value else "No"
+        elif isinstance(value, str):
+            value = value.lower().strip()
+            if value in ('yes', 'y', 'true', '1'):
+                return "Yes"
+            elif value in ('no', 'n', 'false', '0'):
+                return "No"
+            return value.capitalize()  # Just capitalize existing string values
+            
+    return value

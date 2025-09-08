@@ -7,20 +7,20 @@ import os
 from tobys_terminal.shared.css_swag_colors import FOREST_GREEN, PALM_GREEN, CORAL_ORANGE, COCONUT_CREAM, TAN_SAND
 
 
-def create_date_picker(parent, width=12):
+def create_date_picker(parent, width=12, date_pattern='yyyy-mm-dd'):
     return DateEntry(
         parent,
         width=width,
-        background=FOREST_GREEN,         # Header background
-        foreground="white",              # Text color
+        background=FOREST_GREEN,
+        foreground="white",
         borderwidth=2,
-        headersbackground=COCONUT_CREAM, # Header row (days of week)
-        normalbackground=COCONUT_CREAM,  # Default cell background
-        weekendbackground=TAN_SAND,      # Slightly different weekend bg
-        selectbackground=CORAL_ORANGE,   # Selected date highlight
-        selectforeground="white",        # Selected text
-        date_pattern='yyyy-mm-dd',
-        disabledbackground="#ddd",       # Optional: for future use
+        headersbackground=COCONUT_CREAM,
+        normalbackground=COCONUT_CREAM,
+        weekendbackground=TAN_SAND,
+        selectbackground=CORAL_ORANGE,
+        selectforeground="white",
+        date_pattern=date_pattern,
+        disabledbackground="#ddd",
     )
 
 

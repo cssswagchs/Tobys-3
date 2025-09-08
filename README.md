@@ -119,7 +119,14 @@ Developed by Leslie for Toby's Terminal.
 
 cd tobys_terminal-3
 git remote add origin https://github.com/cssswagchs/Tobys-3.git
-git branch -M main
-git push -u origin main
+
+When you make changes to the code:
+
+```bash
+git add .
+git commit -m "Description of changes"
+git push
+```
+
 
 pip install -e .

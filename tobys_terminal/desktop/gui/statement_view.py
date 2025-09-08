@@ -8,6 +8,8 @@ import sqlite3
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 from collections import defaultdict
+from tkcalendar import DateEntry
+
 
 from tobys_terminal.shared.db import get_connection, generate_statement_number
 from tobys_terminal.shared.pdf_export import generate_pdf
@@ -40,14 +42,29 @@ def open_statement_view():
     tk.Label(top_frame, text="Customer:", font=("Arial", 11)).grid(row=0, column=0, padx=5)
     customer_combo = ttk.Combobox(top_frame, width=50, state="readonly", font=("Arial", 11))
     customer_combo.grid(row=0, column=1, columnspan=3, padx=5)
-
-    # Date filters
-    tk.Label(top_frame, text="Start Date (MM-DD-YYYY):", font=("Arial", 11)).grid(row=1, column=0, padx=5, pady=5, sticky="e")
-    start_date_entry = tk.Entry(top_frame, font=("Arial", 11))
+# Date filters
+    tk.Label(top_frame, text="Start Date:", font=("Arial", 11)).grid(row=1, column=0, padx=5, pady=5, sticky="e")
+    start_date_entry = DateEntry(
+        top_frame,
+        width=12,
+        background="darkgreen",
+        foreground="white",
+        borderwidth=2,
+        date_pattern='mm/dd/yyyy',
+        font=("Arial", 11)
+    )
     start_date_entry.grid(row=1, column=1)
 
-    tk.Label(top_frame, text="End Date (MM-DD-YYYY):", font=("Arial", 11)).grid(row=1, column=2, padx=5, pady=5, sticky="e")
-    end_date_entry = tk.Entry(top_frame, font=("Arial", 11))
+    tk.Label(top_frame, text="End Date:", font=("Arial", 11)).grid(row=1, column=2, padx=5, pady=5, sticky="e")
+    end_date_entry = DateEntry(
+        top_frame,
+        width=12,
+        background="darkgreen",
+        foreground="white",
+        borderwidth=2,
+        date_pattern='mm/dd/yyyy',
+        font=("Arial", 11)
+    )
     end_date_entry.grid(row=1, column=3)
 
     # Unpaid only checkbox

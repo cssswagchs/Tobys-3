@@ -4,3 +4,7 @@ flask>=2.2.2
 flask_sqlalchemy
 sentry-sdk[flask]
 tkcalendar
+pandas tabula-py
+PyPDF2 
+pdfplumber 
+pandas

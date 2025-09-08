@@ -8,6 +8,7 @@ from tobys_terminal.shared.pdf_export import generate_imm_production_pdf
 from tobys_terminal.shared.order_utils import add_order
 from tobys_terminal.shared.date_util import create_date_picker, parse_date_input, safe_set_date
 from tobys_terminal.shared.settings import get_setting, set_setting
+from tobys_terminal.shared.imm_import import open_imm_import_window
 
 try:
     from config import IMM_EXCLUDED_STATUSES, IMM_EXCLUDED_P_STATUSES
@@ -63,15 +64,15 @@ def open_imm_roster_view(company_name):
     tree.tag_configure("highlight", background=PALM_GREEN)  # Highlight for newly matched rows
 
     headers = [
-        ("po", "PO #", 80),
-        ("project", "Project Name", 180),
-        ("in_hand", "In Hands Date", 110),
-        ("firm", "Firm Date", 90),
-        ("invoice", "Invoice #", 80),
-        ("process", "Process", 80),
-        ("status", "Status", 220),
+        ("po", "PO #", 60),
+        ("project", "Project Name", 220),
+        ("in_hand", "In Hands Date", 100),
+        ("firm", "Firm Date", 70),
+        ("invoice", "Invoice #", 70),
+        ("process", "Process", 70),
+        ("status", "Status", 140),
         ("p_status", "P-Status", 220),
-        ("notes", "Notes", 300)
+        ("notes", "Notes", 260)
     ]
 
     for key, label, width in headers:
@@ -208,12 +209,18 @@ def open_imm_roster_view(company_name):
         def try_cast(val):
             from datetime import datetime
             try:
-                return datetime.strptime(val, "%m/%d/%Y")  # for in_hand
+                # Try MM/DD/YYYY format first
+                return datetime.strptime(val, "%m/%d/%Y")
             except:
                 try:
-                    return float(val)
+                    # Then try YYYY-MM-DD format
+                    return datetime.strptime(val, "%Y-%m-%d")
                 except:
-                    return val.lower()
+                    try:
+                        return float(val)
+                    except:
+                        return val.lower()
+
 
         data.sort(key=lambda t: try_cast(t[0]), reverse=reverse)
 
@@ -273,6 +280,8 @@ def open_imm_roster_view(company_name):
                     pass  # Leave it as-is if invalid
             
             tree.insert("", "end", iid=row[0], values=row[1:10], tags=(tag,))
+        # Add this line to sort by in_hand date initially
+        sort_by("in_hand")
 
     # --- Inline edit support ---
 
@@ -458,6 +467,7 @@ def open_imm_roster_view(company_name):
             messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
     ttk.Button(button_frame, text="🔄 Sync from Printavo", command=sync_with_printavo).pack(side="left", padx=6)
+    ttk.Button(button_frame, text="📥 Import Orders", command=open_imm_import_window).pack(side="left", padx=6)
     ttk.Button(button_frame, text="🔄 Refresh", command=load_imm_orders).pack(side="left", padx=6)
     ttk.Button(button_frame, text="Close", command=win.destroy).pack(side="right", padx=6)
 

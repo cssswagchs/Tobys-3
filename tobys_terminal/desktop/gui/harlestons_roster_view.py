@@ -9,12 +9,13 @@ from tobys_terminal.shared.order_utils import add_order
 from tobys_terminal.shared.date_util import create_date_picker, parse_date_input, safe_set_date
 from tobys_terminal.shared.db import get_connection
 from tobys_terminal.shared.settings import get_setting, set_setting
-
+from config import format_invoice_number, clean_display_value, FIELD_TYPES
 try:
     from config import HARLESTONS_EXCLUDED_STATUSES, HARLESTONS_EXCLUDED_P_STATUSES
 except ImportError:
     pass
 
+# Define column metadata - similar to your IMM implementation
 COL_META = {
     "po_number":        {"type": "entry", "db": "po_number", "width": 100, "label": "PO #"},
     "invoice_number":   {"type": "entry", "db": "invoice_number", "width": 100, "label": "Invoice #"},
@@ -24,7 +25,7 @@ COL_META = {
     "pcs":              {"type": "entry", "db": "pcs", "width": 60, "label": "PCS"},
     "in_hand_date":     {"type": "entry_date", "db": "in_hand_date", "width": 110, "label": "Due Date"},
     "priority":         {"type": "combo", "options": ["High", "Medium", "Low"], "db": "priority", "width": 80, "label": "Priority"},
-    "status":           {"type": "combo", "options": ["Pending", "In Progress", "Complete", "Need Sewout", "Need Paperwork", "Need Product", "Need Files", "Need Approval"], "db": "status", "width": 120, "label": "Status"},
+    "status":           {"type": "combo", "options": ["Pending", "Issue", "Inline-EMB", "Inline-DTF", "Complete", "Done Done", "Need Sewout", "Need Paperwork", "Need Product", "Need Files", "Need Approval"], "db": "status", "width": 120, "label": "Status"},
     "p_status":         {"type": "combo", "options": ["Unset", "Reviewed", "Confirmed", "In Production", "Complete"], "db": "p_status", "width": 120, "label": "P-Status"},
     "notes":            {"type": "entry", "db": "notes", "width": 200, "label": "Notes"},
     "inside_location":  {"type": "toggle_yes_no", "db": "inside_location", "width": 80, "label": "Inside"},
@@ -54,9 +55,9 @@ def open_harlestons_roster_view(company_name):
     # Header
     ttk.Label(win, text=f"🧵 Harlestons Production Terminal", font=("Arial", 16, "bold")).pack(pady=10)
 
-    # Global Notes
+    # Global Notes Section
     notes_frame = ttk.Frame(win)
-    notes_frame.pack(fill="x", padx=10, pady=(10, 0))
+    notes_frame.pack(fill="x", padx=10, pady=(0, 10))
     ttk.Label(notes_frame, text="Global Notes:", font=("Arial", 10, "bold")).pack(anchor="w")
     notes_entry = tk.Text(notes_frame, height=3, wrap="word")
     notes_entry.pack(fill="x", expand=True, pady=4)
@@ -76,54 +77,14 @@ def open_harlestons_roster_view(company_name):
     ttk.Button(notes_frame, text="💾 Save Notes", command=save_notes).pack(anchor="e", pady=(0, 5))
     load_notes()
 
-    # Main frame for treeview
-    main_frame = ttk.Frame(win)
-    main_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-    # Create columns list from COL_META
-    cols = list(COL_META.keys())
-    
-    # Create headers list from COL_META
-    headers = [meta["label"] for meta in COL_META.values()]
-    
-    # Create treeview
-    tree = ttk.Treeview(main_frame, columns=cols, show="headings", height=30)
-    
-    # Configure columns
-    for col, meta in COL_META.items():
-        tree.heading(col, text=meta["label"])
-        tree.column(col, width=meta["width"], anchor="center")
-    
-    # Style configuration
-    style = ttk.Style()
-    style.configure("Treeview", rowheight=26)
-    style.map("Treeview")  # Clears hover colors for consistency
-    
-    # Row styling
-    tree.tag_configure('oddrow', background=COCONUT_CREAM)
-    tree.tag_configure('evenrow', background=TAN_SAND)
-    tree.tag_configure('highlight', background=PALM_GREEN)  # For newly matched rows
-    
-    # Add vertical scrollbar
-    vsb = ttk.Scrollbar(main_frame, orient="vertical", command=tree.yview)
-    vsb.pack(side='right', fill='y')
-    tree.configure(yscrollcommand=vsb.set)
-    
-    # Add horizontal scrollbar
-    hsb = ttk.Scrollbar(main_frame, orient="horizontal", command=tree.xview)
-    hsb.pack(side='bottom', fill='x')
-    tree.configure(xscrollcommand=hsb.set)
-    
-    tree.pack(fill="both", expand=True)
-
     # Add New Order Frame
     add_frame = ttk.LabelFrame(win, text="➕ Add New Harlestons Order")
-    add_frame.pack(fill="x", padx=10, pady=(10, 0))
+    add_frame.pack(fill="x", padx=10, pady=(0, 10))
 
     # Fields to include in the add form
     add_fields = [
         "po_number", "invoice_number", "club_nickname", "location",
-        "in_hand_date", "pcs", "process", "logo_file",
+        "in_hand_date", "pcs", "process", "p_status", "logo_file",
         "club_colors", "colors_verified"
     ]
 
@@ -162,7 +123,47 @@ def open_harlestons_roster_view(company_name):
             ent.pack(side="left", padx=2)
             add_entries[field] = ent
 
-    # Submit function
+    # Main frame for treeview
+    main_frame = ttk.Frame(win)
+    main_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    # Create columns list from COL_META
+    cols = list(COL_META.keys())
+    
+    # Create headers list from COL_META
+    headers = [meta["label"] for meta in COL_META.values()]
+    
+    # Create treeview
+    tree = ttk.Treeview(main_frame, columns=cols, show="headings")
+    
+    # Configure columns
+    for col, meta in COL_META.items():
+        tree.heading(col, text=meta["label"], command=lambda c=col: sort_by(c))
+        tree.column(col, width=meta["width"], anchor="center")
+    
+    # Style configuration
+    style = ttk.Style()
+    style.configure("Treeview", rowheight=26)
+    style.map("Treeview")  # Clears hover colors for consistency
+    
+    # Row styling
+    tree.tag_configure('oddrow', background=COCONUT_CREAM)
+    tree.tag_configure('evenrow', background=TAN_SAND)
+    tree.tag_configure('highlight', background=PALM_GREEN)  # For newly matched rows
+    
+    # Add vertical scrollbar
+    vsb = ttk.Scrollbar(main_frame, orient="vertical", command=tree.yview)
+    vsb.pack(side='right', fill='y')
+    tree.configure(yscrollcommand=vsb.set)
+    
+    # Add horizontal scrollbar
+    hsb = ttk.Scrollbar(main_frame, orient="horizontal", command=tree.xview)
+    hsb.pack(side='bottom', fill='x')
+    tree.configure(xscrollcommand=hsb.set)
+    
+    tree.pack(fill="both", expand=True)
+
+    # Function definitions
     def submit_new_order():
         field_map = {}
 
@@ -181,12 +182,16 @@ def open_harlestons_roster_view(company_name):
                     messagebox.showerror("Invalid Date", f"Couldn't understand date: {val}")
                     return
                 val = parsed
+            # Format invoice number for database storage
+            if "invoice_number" in field_map and field_map["invoice_number"]:
+                field_map["invoice_number"] = format_invoice_number(field_map["invoice_number"], for_display=False)
+                field_map[field] = val
 
-            field_map[field] = val
-
-        # Set default statuses
-        field_map["status"] = "Pending"
-        field_map["p_status"] = "Unset"
+        # Set default statuses if not provided
+        if not field_map.get("status"):
+            field_map["status"] = "Pending"
+        if not field_map.get("p_status"):
+            field_map["p_status"] = "Unset"
         
         # Check if an order with this PO number already exists
         po_number = field_map.get("po_number", "").strip()
@@ -255,13 +260,11 @@ def open_harlestons_roster_view(company_name):
 
     ttk.Button(add_frame, text="➕ Add", command=submit_new_order).pack(side="left", padx=10)
 
-    # Refresh function
     def refresh_tree():
         for row in tree.get_children():
             tree.delete(row)
         load_orders()
 
-    # Load orders function
     def load_orders():
         conn = get_connection()
         conn.row_factory = sqlite3.Row  # optional, but helpful
@@ -270,19 +273,28 @@ def open_harlestons_roster_view(company_name):
         # Build the query dynamically from COL_META
         columns = ", ".join([f"{meta['db']}" for meta in COL_META.values()])
         
-        cur.execute(f"""
+        # Convert excluded status sets to lowercase for case-insensitive comparison
+        excluded_statuses = [s.lower() for s in HARLESTONS_EXCLUDED_STATUSES]
+        excluded_p_statuses = [s.lower() for s in HARLESTONS_EXCLUDED_P_STATUSES]
+        
+        # Create placeholders for the IN clause
+        status_placeholders = ','.join(['?'] * len(excluded_statuses))
+        p_status_placeholders = ','.join(['?'] * len(excluded_p_statuses))
+        
+        query = f"""
             SELECT id, {columns}
             FROM harlestons_orders
             WHERE
                 status != 'Hidden'
-                AND TRIM(LOWER(p_status)) NOT IN (
-                    'done', 'template', 'done done', 'complete', 'cancelled', 'archived', 'shipped',
-                    'picked up', 'harlestons -- invoiced', 'harlestons -- no order pending',
-                    'harlestons -- picked up', 'harlestons-need sewout'
-                )
+                AND LOWER(status) NOT IN ({status_placeholders})
+                AND LOWER(TRIM(p_status)) NOT IN ({p_status_placeholders})
             ORDER BY in_hand_date ASC
-        """)
-
+        """
+        
+        # Combine the parameter lists
+        params = excluded_statuses + excluded_p_statuses
+        
+        cur.execute(query, params)
         rows = cur.fetchall()
         conn.close()
         
@@ -292,19 +304,15 @@ def open_harlestons_roster_view(company_name):
             for col in cols:
                 value = row[col] if col in row.keys() else ""
                 
-                # Format date if it's a date field
-                if col == "in_hand_date" and value:
-                    try:
-                        value = datetime.strptime(value, "%Y-%m-%d").strftime("%m/%d/%Y")
-                    except ValueError:
-                        pass  # Leave as is if not valid
+                # Use the config function to clean the value for display
+                field_type = FIELD_TYPES.get(col, 'text')  # Default to 'text' if not specified
+                value = clean_display_value(value, field_type)
                 
                 values.append(value)
             
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
             tree.insert("", "end", iid=str(row["id"]), values=values, tags=(tag,))
 
-    # Inline editing
     def update_db(order_id, field, value):
         try:
             conn = get_connection()
@@ -410,10 +418,6 @@ def open_harlestons_roster_view(company_name):
 
     tree.bind("<Double-1>", start_inline_edit)
 
-    # Button frame
-    btn_frame = ttk.Frame(win)
-    btn_frame.pack(fill="x", padx=10, pady=(0, 10))
-    
     def sync_with_printavo():
         """Sync orders from Printavo"""
         try:
@@ -472,9 +476,6 @@ def open_harlestons_roster_view(company_name):
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {str(e)}")
     
-    ttk.Button(btn_frame, text="🔄 Sync from Printavo", command=sync_with_printavo).pack(side="left", padx=6)
-    ttk.Button(btn_frame, text="🔄 Refresh", command=refresh_tree).pack(side="left", padx=6)
-    
     def delete_selected_order():
         selected = tree.selection()
         if not selected:
@@ -493,10 +494,6 @@ def open_harlestons_roster_view(company_name):
             refresh_tree()
             messagebox.showinfo("Success", f"Order with PO #{po_number} has been deleted.")
     
-    ttk.Button(btn_frame, text="🗑️ Delete", command=delete_selected_order).pack(side="left", padx=6)
-    ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="right", padx=6)
-
-    # Export to PDF button
     def export_to_pdf():
         try:
             from tobys_terminal.shared.pdf_export import generate_harlestons_production_pdf
@@ -507,11 +504,7 @@ def open_harlestons_roster_view(company_name):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create PDF: {e}")
     
-    ttk.Button(btn_frame, text="📄 Export to PDF", command=export_to_pdf).pack(side="left", padx=6)
-
-    # Sort function
     def sort_by(col_key, reverse=False):
-        col_index = cols.index(col_key)
         data = [(tree.set(child, col_key), child) for child in tree.get_children('')]
 
         # Try to sort as date, number, or fallback to string
@@ -538,9 +531,48 @@ def open_harlestons_roster_view(company_name):
         # Toggle sort direction next time
         tree.heading(col_key, command=lambda: sort_by(col_key, not reverse))
 
-    # Configure column headings for sorting
-    for col in cols:
-        tree.heading(col, text=COL_META[col]["label"], command=lambda c=col: sort_by(c))
+    def create_context_menu(event):
+        """Create right-click context menu"""
+        selected = tree.selection()
+        if not selected:
+            return
+        
+        context_menu = tk.Menu(win, tearoff=0)
+        
+        # Status submenu
+        status_menu = tk.Menu(context_menu, tearoff=0)
+        for status_option in COL_META["status"]["options"]:
+            if status_option:  # Skip empty option
+                status_menu.add_command(label=status_option, 
+                                      command=lambda s=status_option: update_db(int(selected[0]), "status", s))
+        context_menu.add_cascade(label="Set Status", menu=status_menu)
+        
+        # P-Status submenu
+        p_status_menu = tk.Menu(context_menu, tearoff=0)
+        for p_status_option in COL_META["p_status"]["options"]:
+            if p_status_option:  # Skip empty option
+                p_status_menu.add_command(label=p_status_option, 
+                                        command=lambda s=p_status_option: update_db(int(selected[0]), "p_status", s))
+        context_menu.add_cascade(label="Set P-Status", menu=p_status_menu)
+        
+        context_menu.add_separator()
+        context_menu.add_command(label="Delete", command=delete_selected_order)
+        
+        context_menu.tk_popup(event.x_root, event.y_root)
+
+    tree.bind("<Button-3>", create_context_menu)  # Right-click
+
+    # Button frame - IMPORTANT: Place at the bottom of the window
+    btn_frame = ttk.Frame(win)
+    btn_frame.pack(side="bottom", fill="x", padx=10, pady=10)
+
+    # Add buttons to button frame
+    ttk.Button(btn_frame, text="🔄 Sync from Printavo", command=sync_with_printavo).pack(side="left", padx=6)
+    ttk.Button(btn_frame, text="🔄 Refresh", command=refresh_tree).pack(side="left", padx=6)
+    ttk.Button(btn_frame, text="🗑️ Delete", command=delete_selected_order).pack(side="left", padx=6)
+    ttk.Button(btn_frame, text="📄 Export to PDF", command=export_to_pdf).pack(side="left", padx=6)
+    ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="right", padx=6)
 
     # Load orders on startup
     refresh_tree()
+
