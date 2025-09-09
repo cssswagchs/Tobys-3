@@ -207,21 +207,38 @@ def open_imm_roster_view(company_name):
 
         # Try to sort as date, number, or fallback to string
         def try_cast(val):
-            from datetime import datetime
-            try:
-                # Try MM/DD/YYYY format first
-                return datetime.strptime(val, "%m/%d/%Y")
-            except:
+            # Handle empty values - they should sort to the bottom in ascending order
+            if not val or val.strip() == "":
+                # Return a "maximum" value for ascending sort (will be at the bottom)
+                # For descending sort, this will be reversed later
+                if col_key == "in_hand":
+                    return datetime.max  # Latest possible date for empty dates
+                return float('inf') if col_key in ["invoice", "po"] else "zzzzz"  # For text, sort after all letters
+            
+            # For dates, try to parse
+            if col_key == "in_hand":
                 try:
-                    # Then try YYYY-MM-DD format
-                    return datetime.strptime(val, "%Y-%m-%d")
-                except:
+                    # Try MM/DD/YYYY format first
+                    return datetime.strptime(val, "%m/%d/%Y")
+                except ValueError:
                     try:
-                        return float(val)
-                    except:
+                        # Then try YYYY-MM-DD format
+                        return datetime.strptime(val, "%Y-%m-%d")
+                    except ValueError:
+                        # If it's not a valid date, treat it as text
                         return val.lower()
+            
+            # For numeric columns
+            if col_key in ["invoice", "po"]:
+                try:
+                    return float(val)
+                except ValueError:
+                    return val.lower()
+            
+            # Default case: sort as text
+            return val.lower()
 
-
+        # Sort the data
         data.sort(key=lambda t: try_cast(t[0]), reverse=reverse)
 
         for index, (val, item) in enumerate(data):
@@ -235,6 +252,7 @@ def open_imm_roster_view(company_name):
         # Toggle sort direction next time
         tree.heading(col_key, command=lambda: sort_by(col_key, not reverse))
 
+
     def load_imm_orders():
         tree.delete(*tree.get_children())
         conn = get_connection()
@@ -245,7 +263,7 @@ def open_imm_roster_view(company_name):
             FROM imm_orders
             WHERE
                 status != 'Hidden'
-                AND LOWER(status) NOT IN ('cancelled', 'archived')
+                AND LOWER(status) NOT IN ('cancelled', 'archived', 'done done')
             ORDER BY
                 CASE status
                     WHEN 'Complete and Ready for Pickup' THEN 1

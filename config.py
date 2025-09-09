@@ -3,46 +3,51 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Determine if we're running from a frozen executable (like PyInstaller)
+# --- 1. Determine Project Root (Your original, correct logic) ---
 if getattr(sys, 'frozen', False):
-    # Running as compiled executable
     PROJECT_ROOT = Path(sys.executable).parent.absolute()
 else:
-    # Running in normal Python environment
-    # Get the directory containing config.py (project root)
     PROJECT_ROOT = Path(__file__).parent.absolute()
 
-# Base paths
+# --- 2. Load Environment Variables ---
+load_dotenv(PROJECT_ROOT / '.env')
+
+# --- 3. Define an INDEPENDENT function for the DB path ---
+# This is crucial. This function has no other dependencies.
+def get_db_path():
+    """Gets the database path from an environment variable or defaults to the project root."""
+    env_db_path = os.environ.get('TOBYS_TERMINAL_DB')
+    if env_db_path:
+        return env_db_path
+    return str(PROJECT_ROOT / "terminal.db")
+
+# --- 4. Define the Config Class for Flask ---
+class Config:
+    """Base configuration settings for the Flask app."""
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'a-very-strong-default-secret-key'
+    FLASK_ENV = os.environ.get('FLASK_ENV', 'production')
+    DEBUG = (FLASK_ENV == 'development')
+    SENTRY_DSN = os.environ.get('SENTRY_DSN')
+    
+    # The Config class now calls the simple function to get the path
+    DB_PATH = get_db_path()
+
+# --- 5. Define Global Constants and Paths (for desktop app and other modules) ---
 DATA_DIR = PROJECT_ROOT / "tobys_terminal" / "shared" / "data"
 ASSETS_DIR = PROJECT_ROOT / "tobys_terminal" / "shared" / "assets"
 EXPORTS_DIR = PROJECT_ROOT / "tobys_terminal" / "shared" / "exports"
-
-# Database path - use root level database
-DB_PATH = os.environ.get('TOBYS_TERMINAL_DB')
-if not DB_PATH:
-    # Default to project root
-    DB_PATH = PROJECT_ROOT / "terminal.db"
-else:
-    DB_PATH = Path(DB_PATH)
-
-# Create necessary directories
 LOG_DIR = PROJECT_ROOT / "logs"
+
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
-# Application settings
-APP_NAME = "Toby's Terminal - CSS Billing"
-APP_VERSION = "1.0.0"
-APP_AUTHOR = "CSS Billing"
-
-# Database settings
-DB_CONNECTION_TIMEOUT = 5
-
 # Logging settings
 LOG_FILE = LOG_DIR / f"app_{datetime.now().strftime('%Y%m%d')}.log"
-LOG_LEVEL = "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL = "INFO"
+
 
 # UI settings
 UI_THEME = "sage"  # Your custom theme name
@@ -96,10 +101,6 @@ P_STATUS = (
     "SEWING - Need Product or Patches"
 )
 
-# Function to get database connection path
-def get_db_path():
-    """Get the path to the database file"""
-    return os.path.join(os.path.dirname(__file__), 'terminal.db')
 
 # Statuses to exclude from production terminals
 EXCLUDED_STATUSES = {

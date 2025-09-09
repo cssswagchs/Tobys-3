@@ -1,30 +1,32 @@
 # --- System Imports ---
 import os, sys, pathlib
-from flask import Flask, render_template, redirect, url_for, session
-from collections import defaultdict
-import string
-from dotenv import load_dotenv
+from flask import Flask, render_template
 from datetime import datetime
+
 # --- Sentry Logging ---
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-sentry_sdk.init(
-    dsn="https://70d83f1457688428216a2a6161f852f2@o4509887507136512.ingest.us.sentry.io/4509887667634176",
-    integrations=[FlaskIntegration()],
-    traces_sample_rate=1.0,
-    send_default_pii=True
-)
+# --- Local Imports ---
+# Import the Config class from your config file
+from config import Config 
 
-# --- Env and Shared Setup ---
-env_path = pathlib.Path(__file__).parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'shared')))
-
-# Register filters
+# --- App Initialization ---
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY")
-app.jinja_env.filters["dollars"] = lambda x: f"${float(x):,.2f}" if x else "$0.00"
+
+# Load all configuration from our Config object
+app.config.from_object(Config)
+
+# --- Initialize Sentry (now using the config) ---
+if app.config.get('SENTRY_DSN'):
+    sentry_sdk.init(
+        dsn=app.config['SENTRY_DSN'],
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=1.0,
+        send_default_pii=True,
+        # Set the environment for Sentry to distinguish between dev and prod issues
+        environment=app.config.get('FLASK_ENV', 'production') 
+    )
 
 # --- Register Blueprints ---
 from tobys_terminal.web.routes.auth import auth_bp
@@ -54,10 +56,14 @@ def not_found_error(e):
 def internal_server_error(e):
     return render_template("500.html"), 500
 
+# --- Context Processors & Filters 
 @app.context_processor
 def inject_current_year():
     return {'current_year': datetime.now().year}
 
+app.jinja_env.filters["dollars"] = lambda x: f"${float(x):,.2f}" if x else "$0.00"
+
+
 # --- Run Local Dev ---
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()

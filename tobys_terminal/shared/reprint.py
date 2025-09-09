@@ -34,6 +34,29 @@ def reprint_statement(statement_number: str):
     if start_date is None and end_date is None:
         raise ValueError(f"Statement {statement_number} not found.")
     invoice_numbers = get_statement_invoices(statement_number)
+    
+    # If no invoices found in invoice_tracking, try to reconstruct from statement metadata
+    if not invoice_numbers:
+        # Fallback: compute from header
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT customer_ids_text, customer_id, start_date, end_date
+            FROM statement_tracking
+            WHERE statement_number = ?
+        """, (statement_number,))
+        ids_text, primary_id, s, e = cur.fetchone() or (None, None, None, None)
+        ids = [int(x) for x in (ids_text or "").split(",") if x] or ([primary_id] if primary_id else [])
+        placeholders = ",".join("?" for _ in ids)
+        cur.execute(f"""
+            SELECT invoice_number
+            FROM invoices
+            WHERE customer_id IN ({placeholders})
+            AND date(invoice_date) BETWEEN date(?) AND date(?)
+        """, (*ids, s, e))
+        invoice_numbers = [r[0] for r in cur.fetchall()]
+        conn.close()
+    
     if not invoice_numbers:
         raise ValueError(f"No invoices recorded for {statement_number}.")
 
@@ -64,8 +87,8 @@ def reprint_statement(statement_number: str):
         dt = StatementCalculator._parse_date(None, inv_date)
         # First, check if we have payment info for this invoice
         payment_info = {}
-        for tx_date, amount, inv_num, method, ref in pays:
-            if inv_num == inv_num:  # Match this invoice
+        for tx_date, amount, pay_inv_num, method, ref in pays:
+            if pay_inv_num == inv_num:  # Match this invoice
                 payment_info[inv_num] = f"Paid - {method} {ref}".strip()
                 if payment_info[inv_num].endswith("-"):
                     payment_info[inv_num] = "Paid"
@@ -133,36 +156,4 @@ def reprint_statement(statement_number: str):
         interactive=False
     )
 
-    #print(f"Returning PDF path to Flask: {output_path}")
     return output_path
-
-
-
-
-
-
-    invoice_numbers = get_statement_invoices(statement_number)
-    if not invoice_numbers:
-        # Fallback: compute from header
-        # Use customer_ids_text if you store it, else customer_id
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT customer_ids_text, customer_id, start_date, end_date
-            FROM statement_tracking
-            WHERE statement_number = ?
-        """, (statement_number,))
-        ids_text, primary_id, s, e = cur.fetchone() or (None, None, None, None)
-        ids = [int(x) for x in (ids_text or "").split(",") if x] or ([primary_id] if primary_id else [])
-        placeholders = ",".join("?" for _ in ids)
-        cur.execute(f"""
-            SELECT invoice_number
-            FROM invoices
-            WHERE customer_id IN ({placeholders})
-            AND date(invoice_date) BETWEEN date(?) AND date(?)
-        """, (*ids, s, e))
-        invoice_numbers = [r[0] for r in cur.fetchall()]
-        conn.close()
-
-    if not invoice_numbers:
-        raise ValueError(f"No invoices recorded for {statement_number}.")
