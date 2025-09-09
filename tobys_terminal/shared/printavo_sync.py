@@ -328,6 +328,183 @@ def import_master_orders_from_csv(csv_path):
 
     log(f"✅ Master import complete. Processed: {processed}, Skipped: {skipped}")
 
+def import_payments_from_csv(csv_path):
+    """
+    Imports payment data from Printavo payments CSV export.
+    """
+    log(f"Starting payment import from {csv_path}...")
+    
+    try:
+        # Specify dtype for columns that might be mixed to avoid warnings
+        dtype_spec = {'Invoice #': str, 'Payment Transaction ID': str}
+        df = pd.read_csv(csv_path, dtype=dtype_spec)
+        log(f"Successfully read {len(df)} rows from payments CSV.")
+    except Exception as e:
+        log(f"❌ Failed to read payments CSV file: {e}")
+        return
+
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    processed = 0
+    skipped = 0
+    duplicates = 0
+
+    # Create payments_clean table if it doesn't exist
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS payments_clean (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_date TEXT,
+        amount REAL,
+        invoice_number TEXT,
+        payment_method TEXT,
+        reference TEXT,
+        customer_id INTEGER
+    )
+    """)
+    
+    # Create index for faster lookups
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice_number ON payments_clean (invoice_number);")
+    except sqlite3.OperationalError as e:
+        log(f"Could not create index, it might already exist: {e}")
+
+    for index, row in df.iterrows():
+        try:
+            invoice_num = str(row.get('Invoice #', '')).strip()
+            if not invoice_num:
+                skipped += 1
+                continue
+
+            amount = float(row.get('Amount', 0))
+            if amount < 0:
+                log(f"Skipping negative amount payment: {invoice_num}, ${amount}")
+                skipped += 1
+                continue
+
+            # Get payment method and reference
+            payment_method = str(row.get('Category', '')).strip()
+            reference = str(row.get('Name', '')).strip()
+            
+            # Get transaction date
+            tx_date = pd.to_datetime(row.get('Transaction Date')).strftime('%Y-%m-%d') if pd.notna(row.get('Transaction Date')) else None
+            
+            # Get customer ID
+            customer_id = int(row.get('Customer ID', 0)) if pd.notna(row.get('Customer ID')) else None
+            
+            # Check if payment already exists
+            cur.execute("""
+                SELECT id FROM payments_clean 
+                WHERE invoice_number = ? AND transaction_date = ? AND amount = ?
+            """, (invoice_num, tx_date, amount))
+            
+            existing = cur.fetchone()
+            if existing:
+                # Payment already exists, update the reference if needed
+                cur.execute("""
+                    UPDATE payments_clean 
+                    SET payment_method = ?, reference = ?
+                    WHERE invoice_number = ? AND transaction_date = ? AND amount = ?
+                """, (payment_method, reference, invoice_num, tx_date, amount))
+                duplicates += 1
+                continue
+            
+            # Insert new payment
+            cur.execute("""
+                INSERT INTO payments_clean (
+                    transaction_date, amount, invoice_number, payment_method, reference, customer_id
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (tx_date, amount, invoice_num, payment_method, reference, customer_id))
+            
+            processed += 1
+
+        except Exception as e:
+            log(f"❌ Error processing payment row {index} (Invoice: {row.get('Invoice #', 'N/A')}): {e}")
+            skipped += 1
+
+    conn.commit()
+    conn.close()
+
+    log(f"✅ Payment import complete. Processed: {processed}, Updated: {duplicates}, Skipped: {skipped}")
+
+
+def import_customers_from_csv(csv_path):
+    """
+    Imports customer data from Printavo customers CSV export.
+    """
+    log(f"Starting customer import from {csv_path}...")
+    
+    try:
+        # Specify dtype for columns that might be mixed to avoid warnings
+        dtype_spec = {'Customer ID': str}
+        df = pd.read_csv(csv_path, dtype=dtype_spec)
+        log(f"Successfully read {len(df)} rows from customers CSV.")
+    except Exception as e:
+        log(f"❌ Failed to read customers CSV file: {e}")
+        return
+
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    processed = 0
+    skipped = 0
+
+    for index, row in df.iterrows():
+        try:
+            customer_id = int(row.get('Customer ID', 0)) if pd.notna(row.get('Customer ID')) else 0
+            if customer_id == 0:
+                skipped += 1
+                continue
+                
+            cur.execute("""
+                INSERT OR REPLACE INTO customers (
+                    id, first_name, last_name, company, email, phone,
+                    billing_address1, billing_address2, billing_city, billing_state,
+                    billing_zip, billing_country,
+                    shipping_address1, shipping_address2, shipping_city, shipping_state,
+                    shipping_zip, shipping_country,
+                    tax_exempt, tax_resale_no, created_at,
+                    default_payment_term, default_payment_term_days
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                customer_id,
+                str(row.get("First Name", "")).strip(),
+                str(row.get("Last Name", "")).strip(),
+                str(row.get("Company", "")).strip(),
+                str(row.get("Email", "")).strip(),
+                str(row.get("Phone", "")).strip(),
+                str(row.get("Billing Address - Address 1", "")).strip(),
+                str(row.get("Billing Address - Address 2", "")).strip(),
+                str(row.get("Billing Address - City", "")).strip(),
+                str(row.get("Billing Address - State", "")).strip(),
+                str(row.get("Billing Address - Zip", "")).strip(),
+                str(row.get("Billing Address - Country", "")).strip(),
+                str(row.get("Shipping Address - Address 1", "")).strip(),
+                str(row.get("Shipping Address - Address 2", "")).strip(),
+                str(row.get("Shipping Address - City", "")).strip(),
+                str(row.get("Shipping Address - State", "")).strip(),
+                str(row.get("Shipping Address - Zip", "")).strip(),
+                str(row.get("Shipping Address - Country", "")).strip(),
+                str(row.get("Tax Exempt?", "")).strip(),
+                str(row.get("Tax Resale No", "")).strip(),
+                str(row.get("Created", "")).strip(),
+                str(row.get("Default Payment Term", "")).strip(),
+                int(row.get("Default Payment Term Days", 0)) if pd.notna(row.get("Default Payment Term Days")) else 0
+            ))
+            processed += 1
+            
+        except Exception as e:
+            log(f"❌ Error processing customer row {index} (ID: {row.get('Customer ID', 'N/A')}): {e}")
+            skipped += 1
+
+    conn.commit()
+    conn.close()
+
+    log(f"✅ Customer import complete. Processed: {processed}, Skipped: {skipped}")
+
+
+
+
 
 
 def sync_imm_orders():
@@ -672,15 +849,31 @@ def sync_all():
     """Run all synchronization processes in the correct order."""
     log("=== Starting full Printavo synchronization ===")
     
-    # STEP 1: Import the master CSV into the 'invoices' table.
-    master_csv_path = CSV_DIR / "orders.csv"
-    if master_csv_path.exists():
-        log("Found master orders.csv, importing to 'invoices' table...")
-        import_master_orders_from_csv(master_csv_path)
+    # STEP 1A: Import customers
+    customers_csv_path = CSV_DIR / "customers.csv"
+    if customers_csv_path.exists():
+        log("Found customers.csv, importing to 'customers' table...")
+        import_customers_from_csv(customers_csv_path)
     else:
-        log(f"⚠️ Master orders.csv not found at '{master_csv_path}'.")
+        log(f"⚠️ Customers CSV not found at '{customers_csv_path}'.")
+    
+    # STEP 1B: Import the master CSV into the 'invoices' table.
+    orders_csv_path = CSV_DIR / "orders.csv"
+    if orders_csv_path.exists():
+        log("Found orders.csv, importing to 'invoices' table...")
+        import_master_orders_from_csv(orders_csv_path)
+    else:
+        log(f"⚠️ Orders CSV not found at '{orders_csv_path}'.")
         log("Sync will only run on existing data in the 'invoices' table.")
-
+    
+    # STEP 1C: Import payments CSV
+    payments_csv_path = CSV_DIR / "payments.csv"
+    if payments_csv_path.exists():
+        log("Found payments.csv, importing to 'payments_clean' table...")
+        import_payments_from_csv(payments_csv_path)
+    else:
+        log(f"⚠️ Payments CSV not found at '{payments_csv_path}'.")
+        
     # Check and create tables if needed
     create_tables()
     
@@ -711,6 +904,7 @@ def sync_all():
     
     log("=== Printavo synchronization complete ===")
     return imm_success and harlestons_success
+
 
 
 

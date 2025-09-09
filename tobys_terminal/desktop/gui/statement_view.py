@@ -211,56 +211,28 @@ def open_statement_view():
                 fg="green"
             )
 
-    
-
-
     def track_invoices_on_statement(invoice_numbers, statement_number):
+        """Tags a list of invoices to a given statement number."""
+        if not invoice_numbers:
+            return
+
         conn = get_connection()
         cursor = conn.cursor()
-        skipped = []
-        retagged = 0
-        inserted = 0
-
-        for inv in invoice_numbers:
-            cursor.execute("SELECT statement_number FROM invoice_tracking WHERE invoice_number = ?", (inv,))
-            result = cursor.fetchone()
-
-            if result:
-                existing_stmt = (result[0] or "").strip()
-                if existing_stmt:  # truly assigned elsewhere
-                    skipped.append((inv, existing_stmt))
-                else:
-                    cursor.execute("""
-                        UPDATE invoice_tracking
-                        SET statement_number = ?, tagged_on = DATE('now')
-                        WHERE invoice_number = ?
-                    """, (statement_number, inv))
-                    retagged += 1
-            else:
+        
+        try:
+            for inv in invoice_numbers:
+                # INSERT OR IGNORE is safe here because we've already filtered out conflicts
                 cursor.execute("""
-                    INSERT INTO invoice_tracking (invoice_number, statement_number, tagged_on)
+                    INSERT OR IGNORE INTO invoice_tracking (invoice_number, statement_number, tagged_on)
                     VALUES (?, ?, DATE('now'))
                 """, (inv, statement_number))
-                inserted += 1
-
-        conn.commit()
-        conn.close()
-
-        if skipped:
-            print("⚠️ Skipped invoices already assigned to other statements:")
-            for inv, stmt in skipped:
-                print(f"  Invoice {inv} ➜ Statement {stmt}")
-            messagebox.showwarning(
-                "Invoice Conflict",
-                f"{len(skipped)} invoice(s) were skipped because they were already assigned to a prior statement."
-            )
-
-        # Optional: let yourself know how many were re-tagged vs inserted
-        print(f"🔁 Re-tagged {retagged}, 🆕 Inserted {inserted}, ⏭️ Skipped {len(skipped)}")
-
-
-
-
+            conn.commit()
+            print(f"✅ Tagged {len(invoice_numbers)} invoices to statement {statement_number}.")
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Failed to tag invoices: {e}")
+        finally:
+            conn.close()
 
     def handle_export_pdf():
         selected_name = customer_combo.get()
@@ -273,28 +245,74 @@ def open_statement_view():
             messagebox.showerror("Export Failed", "Customer ID not found.")
             return
 
-        company_label = get_company_label(first, last, company)
-        statement_number = generate_statement_number(
-            customer_id=customer_ids,
-            start_date=start_date_entry.get().strip(),
-            end_date=end_date_entry.get().strip(),
-            company_label=company_label
-        )
-
-        # Recompute from source so we have payment method/reference
+        # --- 1. Fetch the potential invoices FIRST ---
         start_d = parse_date_str(start_date_entry.get().strip())
         end_d   = parse_date_str(end_date_entry.get().strip())
-
+        
         calc = StatementCalculator(
             customer_ids=customer_ids,
             start_date=start_d,
             end_date=end_d,
             unpaid_only=unpaid_var.get()
         )
-        raw_rows, totals = calc.fetch()  # includes payment rows with method & reference:contentReference[oaicite:2]{index=2}
+        raw_rows, totals = calc.fetch()
+        
+        invoice_numbers_to_check = [r[2] for r in raw_rows if r[1] == "Invoice"]
 
-        # Add Nickname for invoice rows (bulk lookup to avoid N queries)
-        inv_nums = [r[2] for r in raw_rows if r[1] == "Invoice"]
+        if not invoice_numbers_to_check:
+            messagebox.showinfo("No Invoices", "There are no invoices to include in this statement.")
+            return
+
+        # --- 2. Check for conflicts BEFORE generating a statement number ---
+        # We need to import the new function
+        from tobys_terminal.shared.statement_logic import check_invoices_on_statements
+        
+        conflicts = check_invoices_on_statements(invoice_numbers_to_check)
+        
+        final_rows = raw_rows
+        final_invoice_numbers = invoice_numbers_to_check
+
+        if conflicts:
+            conflict_msg = "\n".join([f"- Invoice {inv} is already on Statement {stmt}" for inv, stmt in conflicts.items()])
+            
+            # Ask the user what to do
+            proceed = messagebox.askyesno(
+                "Invoice Conflict Found",
+                f"The following invoices are already on other statements:\n\n{conflict_msg}\n\n"
+                "Do you want to create a new statement containing only the remaining invoices?"
+            )
+            
+            if not proceed:
+                messagebox.showinfo("Cancelled", "Statement generation cancelled.")
+                return
+            
+            # Filter out the conflicting invoices
+            final_invoice_numbers = [inv for inv in invoice_numbers_to_check if inv not in conflicts]
+            final_rows = [row for row in raw_rows if row[1] == "Payment" or (row[1] == "Invoice" and row[2] in final_invoice_numbers)]
+
+            if not final_invoice_numbers:
+                messagebox.showinfo("No Invoices Left", "All potential invoices for this statement were already assigned elsewhere. Nothing to generate.")
+                return
+                
+            # Recalculate totals based on the filtered rows
+            billed = sum(r[3] for r in final_rows if r[1] == "Invoice")
+            paid   = sum(r[3] for r in final_rows if r[1] == "Payment")
+            totals = {"billed": billed, "paid": paid, "balance": billed - paid}
+
+        # --- 3. Generate the statement number ONLY if we are proceeding ---
+        statement_number = generate_statement_number(
+            customer_id=customer_ids[0], # Use the primary ID
+            start_date=start_date_entry.get().strip(),
+            end_date=end_date_entry.get().strip(),
+            company_label=selected_name,
+            customer_ids_list=customer_ids
+        )
+
+        # --- 4. Tag the (now-guaranteed unique) invoices to the new statement ---
+        track_invoices_on_statement(final_invoice_numbers, statement_number)
+
+        # --- 5. Prepare data for the PDF (this part is mostly the same) ---
+        inv_nums = [r[2] for r in final_rows if r[1] == "Invoice"]
         nickname_map = {}
         if inv_nums:
             conn = get_connection()
@@ -304,39 +322,32 @@ def open_statement_view():
             nickname_map = dict(cursor.fetchall())
             conn.close()
 
-        # Build export rows in the format the PDF expects:
-        # (date, type, invoice#, nickname, amount, status_or_paymentinfo)
         export_rows = []
-        for row in raw_rows:
+        for row in final_rows:
             if row[1] == "Invoice":
                 dt, _, inv, amt, paid_flag, po_num = row
                 nickname = nickname_map.get(inv)
                 status = "Paid" if str(paid_flag).strip().lower() in {"yes","true","paid","y","1"} else "Unpaid"
                 export_rows.append((dt, "Invoice", inv, po_num, nickname, float(amt), status))
-            else:  # Payment row
+            else:
                 dt, _, inv, amt, method, ref, _note = row
                 payload = f"{(method or '').strip()} {(ref or '').strip()}".strip()
                 export_rows.append((dt, "Payment", inv, None, None, float(amt), payload))
 
-        # Tag invoices to statement
-        invoice_numbers = [r[2] for r in export_rows if r[1] == "Invoice"]
-        track_invoices_on_statement(invoice_numbers, statement_number)
-
-        # Export
+        # --- 6. Generate the PDF ---
         generate_pdf(
             customer_name=selected_name,
             rows=export_rows,
-            totals=totals,  # already matches the rows we’re exporting:contentReference[oaicite:3]{index=3}:contentReference[oaicite:4]{index=4}
+            totals=totals,
             start_date=start_date_entry.get().strip(),
             end_date=end_date_entry.get().strip(),
             nickname=None,
             statement_number=statement_number
         )
-        messagebox.showinfo("Export Complete", f"PDF exported for {selected_name}.")
+        messagebox.showinfo("Export Complete", f"PDF for Statement {statement_number} exported for {selected_name}.")
 
-    
+    # In statement_view.py, this is the correct function for exporting to CSV.
 
-    # --- add this function next to handle_export_pdf() ---
     def handle_export_csv():
         try:
             selected_name = customer_combo.get().strip()
@@ -379,16 +390,12 @@ def open_statement_view():
                 conn.close()
 
             # Merge payments into invoice "Status" like the PDF:
-            # rows structure from your calculator (expected):
-            # Invoice rows: (date, "Invoice", invoice#, amount, paid_flag/boolean-or-string, ...)
-            # Payment rows: (date, "Payment", invoice#, amount, method, reference, note)
             from collections import defaultdict
             pay_index = defaultdict(list)
             for dt, t, inv, *rest in raw_rows:
                 if str(t) == "Payment":
-                    # rest = [amount, method, reference, note] per your calculator
-                    # We only need: "METHOD REF"
                     try:
+                        # Expected format: [amount, method, reference, note]
                         _, method, ref, *_ = rest
                     except Exception:
                         method, ref = "", ""
@@ -419,7 +426,6 @@ def open_statement_view():
                 return
 
             # Ask where to save
-
             default_name = f"statement_{selected_name.replace(' ', '_')}_{(start_s or 'start')}_to_{(end_s or 'end')}.csv"
             path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
@@ -443,6 +449,12 @@ def open_statement_view():
 
         except Exception as e:
             messagebox.showerror("Export Failed", f"{type(e).__name__}: {e}")
+
+
+
+
+
+
 
     def prompt_reprint():
         stmt_num = simpledialog.askstring("Reprint Statement", "Enter Statement Number to reprint:")

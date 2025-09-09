@@ -62,7 +62,19 @@ def reprint_statement(statement_number: str):
     rows = []
     for inv_date, inv_num, total, paid, _status, nick, po in invs:
         dt = StatementCalculator._parse_date(None, inv_date)
-        status = "Paid" if str(paid or "").strip().lower() in {"yes", "true", "paid", "y", "1"} else "Unpaid"
+        # First, check if we have payment info for this invoice
+        payment_info = {}
+        for tx_date, amount, inv_num, method, ref in pays:
+            if inv_num == inv_num:  # Match this invoice
+                payment_info[inv_num] = f"Paid - {method} {ref}".strip()
+                if payment_info[inv_num].endswith("-"):
+                    payment_info[inv_num] = "Paid"
+
+        # Then use that info if available
+        if inv_num in payment_info:
+            status = payment_info[inv_num]
+        else:
+            status = "Paid" if str(paid or "").strip().lower() in {"yes", "true", "paid", "y", "1"} else "Unpaid"
         rows.append((dt, "Invoice", inv_num, (po or ""), (nick or ""), float(total or 0), status))
 
     for tx_date, amount, inv_num, method, ref in pays:
@@ -76,7 +88,7 @@ def reprint_statement(statement_number: str):
     ))
 
     billed = sum(float(r[5] or 0) for r in rows if r[1] == "Invoice")
-    paid   = sum(float(r[5] or 0) for r in rows if r[1] == "Payment")
+    paid = sum(float(r[5] or 0) for r in rows if r[1] == "Payment")
     totals = {"billed": billed, "paid": paid, "balance": billed - paid}
 
     # --- Get customer name

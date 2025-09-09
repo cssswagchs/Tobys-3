@@ -5,10 +5,10 @@ import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-
 from tobys_terminal.shared.db import get_connection
 from tobys_terminal.shared.brand_ui import apply_brand, zebra_tree
 from tobys_terminal.shared.reprint import reprint_statement
+from tobys_terminal.shared.statement_logic import void_statement
 
 DB_NAME = "terminal.db"
 
@@ -190,6 +190,36 @@ def open_statement_register():
 
     zebra_tree(tree)
 
+    def void_selected_statement():
+        sel = tree.selection()
+        if not sel:
+            messagebox.showwarning("No Selection", "Select one statement to void.")
+            return
+        
+        stmt = tree.item(sel[0])["values"][0]
+        
+        # Confirm with user
+        confirm = messagebox.askyesno(
+            "Confirm Void", 
+            f"Are you sure you want to void statement {stmt}?\n\n"
+            "This will remove all invoice associations and mark the statement as void.\n"
+            "This action cannot be undone."
+        )
+        
+        if not confirm:
+            return
+        
+        try:
+            success, message = void_statement(stmt)
+            if success:
+                messagebox.showinfo("Success", message)
+                # Refresh the view to show updated status
+                load_register_async()
+            else:
+                messagebox.showerror("Error", message)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to void statement: {str(e)}")
+
 
 
     def export_csv():
@@ -231,6 +261,10 @@ def open_statement_register():
 
     btn_reprint = ttk.Button(bar, text="📄 Reprint Selected", style="Primary.TButton", command=reprint_selected)
     btn_reprint.pack(side="left", padx=8)
+
+    btn_void = ttk.Button(bar, text="🚫 Void Statement", style="Danger.TButton", command=void_selected_statement)
+    btn_void.pack(side="left", padx=8)
+
 
     ttk.Button(bar, text="Close", style="Primary.TButton", command=win.destroy).pack(side="right")
 

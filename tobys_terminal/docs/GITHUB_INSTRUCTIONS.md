@@ -30,7 +30,7 @@ After creating the repository, you'll see instructions for pushing an existing r
 
 3. Add the remote repository URL:
    ```bash
-   git remote add origin https://github.com/yourusername/tobys-terminal.git
+   git remote add origin https://github.com/cssswagchs/tobys-terminal.git
    ```
    (Replace "yourusername" with your actual GitHub username and "tobys-terminal" with your repository name)
 
@@ -83,7 +83,7 @@ When you make changes to the code:
 
 ```bash
 git add .
-git commit -m "Description of changes"
+git commit -m "imm terminal fix"
 git push
 ```
 

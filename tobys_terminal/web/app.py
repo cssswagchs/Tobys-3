@@ -27,14 +27,14 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.jinja_env.filters["dollars"] = lambda x: f"${float(x):,.2f}" if x else "$0.00"
 
 # --- Register Blueprints ---
-from routes.auth import auth_bp
-from routes.lori import lori_bp
-from routes.dashboard import dashboard_bp
-from routes.customer_portal import customer_bp
-from routes.harlestons import harlestons_bp
-from routes.imm import imm_bp
-from routes.dataimaging import dataimaging_bp
-from routes.admin import admin_bp
+from tobys_terminal.web.routes.auth import auth_bp
+from tobys_terminal.web.routes.lori import lori_bp
+from tobys_terminal.web.routes.dashboard import dashboard_bp
+from tobys_terminal.web.routes.customer_portal import customer_bp
+from tobys_terminal.web.routes.harlestons import harlestons_bp
+from tobys_terminal.web.routes.imm import imm_bp
+from tobys_terminal.web.routes.dataimaging import dataimaging_bp
+from tobys_terminal.web.routes.admin import admin_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(lori_bp)

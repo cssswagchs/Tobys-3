@@ -25,6 +25,7 @@ from tobys_terminal.shared.settings import get_setting, set_setting
 
 # Import the new printavo_sync functionality
 from tobys_terminal.shared.printavo_sync import sync_all, sync_imm_orders, sync_harlestons_orders, check_database
+from tobys_terminal.shared.statement_logic import fix_invoice_tracking_table
 
 def handle_sync_all():
     """Run the full Printavo synchronization process"""
@@ -132,6 +133,9 @@ def handle_check_database():
 
 def initialize_database():
     ensure_customer_profiles_table()
+    ensure_statement_tables()
+    fix_invoice_tracking_table()  # Add this line
+    ensure_indexes()
     # other `ensure_*` things here
 
 def show_oldest_open_invoice():

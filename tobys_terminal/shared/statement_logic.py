@@ -307,3 +307,252 @@ def get_customer_ids_by_company(company_name: str):
     ids = [r[0] for r in cur.fetchall()]
     conn.close()
     return ids
+
+def void_statement(statement_number):
+    """
+    Mark a statement as void in the database.
+    
+    Args:
+        statement_number (str): The statement number to void
+        
+    Returns:
+        tuple: (success, message) where success is a boolean and message is a string
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        
+        # Check if statement exists
+        cur.execute("SELECT statement_number FROM statement_tracking WHERE statement_number = ?", 
+                   (statement_number,))
+        if not cur.fetchone():
+            return False, f"Statement {statement_number} not found."
+        
+        # Update statement status to void
+        cur.execute("""
+            UPDATE statement_tracking 
+            SET status = 'VOID', 
+                voided_at = DATETIME('now'),
+                notes = COALESCE(notes, '') || ' Voided on ' || DATETIME('now')
+            WHERE statement_number = ?
+        """, (statement_number,))
+        
+        # Get affected invoices
+        cur.execute("""
+            SELECT invoice_number FROM invoice_tracking
+            WHERE statement_number = ?
+        """, (statement_number,))
+        
+        invoices = [row[0] for row in cur.fetchall()]
+        
+        # Remove invoice-statement associations
+        cur.execute("""
+            DELETE FROM invoice_tracking
+            WHERE statement_number = ?
+        """, (statement_number,))
+        
+        conn.commit()
+        
+        return True, f"Statement {statement_number} voided successfully. {len(invoices)} invoices released."
+    
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return False, f"Error voiding statement: {str(e)}"
+    
+    finally:
+        if conn:
+            conn.close()
+
+
+def void_statement_cli():
+    """Command-line interface for voiding statements."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Void a statement")
+    parser.add_argument("statement_number", help="Statement number to void")
+    parser.add_argument("--force", action="store_true", help="Force void without confirmation")
+    
+    args = parser.parse_args()
+    
+    if not args.force:
+        confirm = input(f"Are you sure you want to void statement {args.statement_number}? (y/n): ")
+        if confirm.lower() != 'y':
+            print("Operation cancelled.")
+            return
+    
+    success, message = void_statement(args.statement_number)
+    if success:
+        print(f"✅ {message}")
+    else:
+        print(f"❌ {message}")
+
+def fix_invoice_tracking_table():
+    """Fix the invoice_tracking table to prevent duplicate invoices on statements."""
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    try:
+        # Check if we need to modify the table structure
+        cur.execute("PRAGMA table_info(invoice_tracking)")
+        columns = {row[1]: row for row in cur.fetchall()}
+        
+        # Check if the primary key is on invoice_number
+        primary_key_on_invoice = any(row[5] == 1 and row[1] == 'invoice_number' for row in cur.fetchall())
+        
+        # Find any duplicate invoices (same invoice on multiple statements)
+        cur.execute("""
+            SELECT invoice_number, COUNT(DISTINCT statement_number) as stmt_count,
+                   GROUP_CONCAT(statement_number) as statements
+            FROM invoice_tracking
+            GROUP BY invoice_number
+            HAVING stmt_count > 1
+        """)
+        
+        duplicates = cur.fetchall()
+        if duplicates:
+            print(f"Found {len(duplicates)} invoices on multiple statements:")
+            for inv, count, statements in duplicates:
+                print(f"  Invoice {inv} appears on {count} statements: {statements}")
+                
+                # Keep only the most recent statement for each invoice
+                cur.execute("""
+                    DELETE FROM invoice_tracking
+                    WHERE invoice_number = ?
+                    AND statement_number NOT IN (
+                        SELECT statement_number
+                        FROM invoice_tracking
+                        WHERE invoice_number = ?
+                        ORDER BY ROWID DESC
+                        LIMIT 1
+                    )
+                """, (inv, inv))
+        
+        conn.commit()
+        return len(duplicates)
+    except Exception as e:
+        conn.rollback()
+        print(f"Error fixing invoice_tracking table: {e}")
+        return 0
+    finally:
+        conn.close()
+
+def check_invoices_on_statements(invoice_numbers):
+    """
+    Check if any invoices are already on statements.
+    
+    Args:
+        invoice_numbers (list): List of invoice numbers to check
+        
+    Returns:
+        dict: Dictionary mapping invoice numbers to statement numbers
+    """
+    if not invoice_numbers:
+        return {}
+        
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    placeholders = ','.join('?' for _ in invoice_numbers)
+    cur.execute(f"""
+        SELECT invoice_number, statement_number 
+        FROM invoice_tracking 
+        WHERE invoice_number IN ({placeholders})
+    """, invoice_numbers)
+    
+    already_on_statements = {row[0]: row[1] for row in cur.fetchall()}
+    conn.close()
+    
+    return already_on_statements
+
+def track_invoices_on_statement(statement_number, invoice_numbers):
+    """
+    Track which invoices are included in a statement, preventing duplicates.
+    
+    Args:
+        statement_number (str): The statement number
+        invoice_numbers (list): List of invoice numbers to track
+        
+    Returns:
+        tuple: (success, skipped_invoices)
+    """
+    if not invoice_numbers:
+        return True, []
+        
+    # First check if any invoices are already on statements
+    already_on_statements = check_invoices_on_statements(invoice_numbers)
+    if already_on_statements:
+        # Filter out invoices that are already on statements
+        invoice_numbers = [inv for inv in invoice_numbers if inv not in already_on_statements]
+    
+    if not invoice_numbers:
+        return True, list(already_on_statements.keys())
+    
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    try:
+        for inv in invoice_numbers:
+            cur.execute("""
+                INSERT OR REPLACE INTO invoice_tracking (invoice_number, statement_number, tagged_on)
+                VALUES (?, ?, DATETIME('now'))
+            """, (inv, statement_number))
+        
+        conn.commit()
+        return True, list(already_on_statements.keys())
+    except Exception as e:
+        conn.rollback()
+        print(f"Error tracking invoices: {e}")
+        return False, list(already_on_statements.keys())
+    finally:
+        conn.close()
+
+def ensure_statement_integrity():
+    """Ensure statement and invoice tracking integrity."""
+    # Fix any duplicate invoices in the invoice_tracking table
+    duplicates_fixed = fix_invoice_tracking_table()
+    if duplicates_fixed:
+        print(f"Fixed {duplicates_fixed} duplicate invoice entries in statements.")
+    
+    # Ensure the statement_tracking table has the necessary columns
+    conn = get_connection()
+    cur = conn.cursor()
+    
+    try:
+        # Check if status column exists
+        cur.execute("PRAGMA table_info(statement_tracking)")
+        columns = [row[1] for row in cur.fetchall()]
+        
+        if "status" not in columns:
+            cur.execute("ALTER TABLE statement_tracking ADD COLUMN status TEXT DEFAULT 'ACTIVE'")
+        
+        if "voided_at" not in columns:
+            cur.execute("ALTER TABLE statement_tracking ADD COLUMN voided_at TEXT")
+            
+        if "notes" not in columns:
+            cur.execute("ALTER TABLE statement_tracking ADD COLUMN notes TEXT")
+        
+        conn.commit()
+    except Exception as e:
+        print(f"Error ensuring statement integrity: {e}")
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    print("Statement Logic Utility")
+    print("======================")
+    print("1. Fix invoice tracking table")
+    print("2. Void a statement")
+    print("3. Exit")
+    
+    choice = input("Enter your choice (1-3): ")
+    
+    if choice == "1":
+        duplicates = fix_invoice_tracking_table()
+        print(f"Fixed {duplicates} duplicate invoice entries.")
+    elif choice == "2":
+        statement_number = input("Enter statement number to void: ")
+        void_statement_cli()
+    else:
+        print("Exiting.")
+

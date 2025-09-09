@@ -130,7 +130,7 @@ def ensure_statement_tables():
             end_date TEXT
         )
     """)
-    # Add optional columns if they don’t exist yet
+    # Add optional columns if they don't exist yet
     try:
         cursor.execute("ALTER TABLE statement_tracking ADD COLUMN company_label TEXT")
     except Exception:
@@ -140,7 +140,16 @@ def ensure_statement_tables():
         cursor.execute("ALTER TABLE statement_tracking ADD COLUMN customer_ids_text TEXT")
     except Exception:
         pass
-
+        
+    try:
+        cursor.execute("ALTER TABLE statement_tracking ADD COLUMN status TEXT DEFAULT 'ACTIVE'")
+    except Exception:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE statement_tracking ADD COLUMN voided_at TEXT")
+    except Exception:
+        pass
 
     # Table to track which invoices were included in which statement
     cursor.execute("""
@@ -153,6 +162,7 @@ def ensure_statement_tables():
 
     conn.commit()
     conn.close()
+
  # Create customer_profiles table
 def ensure_customer_profiles_table():
     conn = get_connection()
@@ -349,3 +359,5 @@ def set_customer_status(company: str, value: str | None) -> None:
         ON CONFLICT(company) DO UPDATE SET status=excluded.status
     """, (company, value))
     conn.commit()
+
+

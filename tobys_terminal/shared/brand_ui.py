@@ -49,6 +49,17 @@ def apply_brand(root: tk.Misc, *, sand_bg=False, large_title=False):
                     borderwidth=0)
     style.map("Accent.TButton", background=[("active", CORAL_ORANGE)])
 
+    # Add a danger button style
+    style = ttk.Style(root)
+    style.configure("Danger.TButton", 
+                    background="#ff5252", 
+                    foreground="white", 
+                    padding=(10, 5),
+                    font=("Segoe UI", 10))
+    style.map("Danger.TButton",
+              background=[("active", "#ff1a1a"), ("disabled", "#ffb3b3")],
+              foreground=[("disabled", "#a0a0a0")])
+
     # Cards / group boxes
     style.configure("Card.TFrame", background=paper)
     style.configure("Card.TLabelframe", background=paper)
@@ -86,3 +97,4 @@ def zebra_tree(tree: ttk.Treeview):
     tree.tag_configure("even", background="#ffffff")
     for i, iid in enumerate(tree.get_children(""), start=1):
         tree.item(iid, tags=("even",) if i % 2 == 0 else ("odd",))
+
