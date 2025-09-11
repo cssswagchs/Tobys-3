@@ -229,3 +229,14 @@ def clean_display_value(value, field_type):
             return value.capitalize()  # Just capitalize existing string values
             
     return value
+
+
+
+class Config:
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'your-secret-key'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///terminal.db'
+    
+class ProductionConfig(Config):
+    # PythonAnywhere settings
+    DEBUG = False
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')

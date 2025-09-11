@@ -5,7 +5,6 @@ Allows importing IMM orders from PDF or CSV files
 
 import os
 import pandas as pd
-import tabula  # For PDF parsing
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox

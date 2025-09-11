@@ -169,6 +169,54 @@ def update_orders():
     flash("✅ Orders updated successfully!", "success")
     return redirect(url_for('imm.terminal'))
 
+@imm_bp.route('/update_field', methods=['POST'])
+@requires_permission('manage_production')
+def update_field():
+    """Update a single field of an IMM order"""
+    if not request.is_json:
+        return {"error": "Request must be JSON"}, 400
+    
+    data = request.get_json()
+    order_id = data.get('order_id')
+    field_name = data.get('field_name')
+    value = data.get('value')
+    
+    # Validate field name to prevent SQL injection
+    valid_fields = {
+        'po_number': 'po_number',
+        'project_name': 'nickname',
+        'in_hands': 'in_hand_date',
+        'firm_date': 'firm_date',
+        'invoice_number': 'invoice_number',
+        'process': 'process',
+        'status': 'status',
+        'notes': 'notes'
+    }
+    
+    # Add p_status only if user is admin
+    is_admin = 'admin' in session.get('role', '') or session.get('role') == 'admin'
+    if is_admin:
+        valid_fields['p_status'] = 'p_status'
+    
+    # Check if field is valid
+    if field_name not in valid_fields:
+        return {"error": "Invalid field name"}, 400
+    
+    # Map the form field name to database column name
+    db_field = valid_fields[field_name]
+    
+    conn = get_db_connection()
+    try:
+        conn.execute(f"UPDATE imm_orders SET {db_field} = ? WHERE id = ?", 
+                    (value, order_id))
+        conn.commit()
+        conn.close()
+        return {"success": True}, 200
+    except Exception as e:
+        conn.close()
+        return {"error": str(e)}, 500
+
+
 @imm_bp.route('/new', methods=['GET', 'POST'])
 @requires_permission('manage_production')
 def new_order():
@@ -221,6 +269,25 @@ def generate_report():
     # Report generation logic here
     flash("Report generation coming soon!", "info")
     return redirect(url_for('imm.terminal'))
+
+@imm_bp.route('/import_from_printavo', methods=['POST'])
+@requires_permission('manage_production')
+def import_from_printavo():
+    """Import orders from Printavo"""
+    try:
+        from tobys_terminal.shared.printavo_sync import sync_imm_orders
+        result = sync_imm_orders()
+        if result:
+            flash("✅ Successfully imported orders from Printavo!", "success")
+        else:
+            flash("⚠️ No new orders were imported from Printavo.", "warning")
+    except ImportError:
+        flash("❌ Printavo sync module not available.", "error")
+    except Exception as e:
+        flash(f"❌ Error importing from Printavo: {str(e)}", "error")
+    
+    return redirect(url_for('imm.terminal'))
+
 
 @imm_bp.route('/home')
 def landing_page():

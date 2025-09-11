@@ -48,9 +48,10 @@ def open_harlestons_roster_view(company_name):
         if _active_editor["widget"]:
             try:
                 _active_editor["widget"].destroy()
-            except:
+            except tk.TclError:  # Be more specific with the exception
                 pass
             _active_editor["widget"] = None
+
 
     # Header
     ttk.Label(win, text=f"🧵 Harlestons Production Terminal", font=("Arial", 16, "bold")).pack(pady=10)
@@ -314,15 +315,21 @@ def open_harlestons_roster_view(company_name):
             tree.insert("", "end", iid=str(row["id"]), values=values, tags=(tag,))
 
     def update_db(order_id, field, value):
+        conn = None
         try:
             conn = get_connection()
             cur = conn.cursor()
             cur.execute(f"UPDATE harlestons_orders SET {field} = ? WHERE id = ?", (value, order_id))
             conn.commit()
-            conn.close()
             refresh_tree()
         except Exception as e:
+            if conn:
+                conn.rollback()  # Roll back any pending transaction
             messagebox.showerror("Database Error", f"Failed to update record: {e}")
+        finally:
+            if conn:
+                conn.close()  # Ensure connection is closed even if an error occurs
+
 
     def start_inline_edit(event):
         destroy_active_editor()
@@ -393,13 +400,15 @@ def open_harlestons_roster_view(company_name):
             editor.focus_set()
 
         elif meta["type"] == "combo":
-            editor = ttk.Combobox(tree.master, values=meta["options"])
+            editor = ttk.Combobox(tree.master, values=meta["options"], state="readonly")
             editor.set(curr_val)
             editor.place(x=x, y=y, width=w, height=h)
             editor.focus_set()
             editor.bind("<Return>", lambda _: commit(editor.get()))
             editor.bind("<KP_Enter>", lambda _: commit(editor.get()))
+            editor.bind("<Escape>", lambda *_: destroy_active_editor())  # Add this line
             editor.bind("<FocusOut>", lambda _: commit(editor.get()))
+
 
         else:
             editor = ttk.Entry(tree.master)

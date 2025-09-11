@@ -1,16 +1,86 @@
 import sqlite3
 import os
-
-# tobys_terminal/shared/db.py
-import sqlite3
-
-# Import from the root config
-from config import get_db_path
+import sys
+from pathlib import Path
 
 def get_connection():
-    """Get a connection to the database"""
-    db_path = get_db_path()
-    return sqlite3.connect(db_path)
+    """Get a connection to the database that works regardless of drive letter"""
+    
+    
+    # First try: Use config if available
+    try:
+        from config import get_db_path
+        config_path = get_db_path()
+        if os.path.exists(config_path):
+            return sqlite3.connect(config_path)
+    except Exception:
+        pass
+    
+    # Second try: Find the database relative to the current file
+    try:
+        # Get the directory of this script
+        current_file = Path(__file__)
+        
+        # Navigate up to find project root (where terminal.db should be)
+        # This works regardless of drive letter because we're using relative paths
+        possible_roots = [
+            current_file.parent.parent.parent,  # If in tobys_terminal/shared
+            current_file.parent.parent,         # If in tobys_terminal
+            Path.cwd()                          # Current working directory
+        ]
+        
+        for root in possible_roots:
+            db_path = root / "terminal.db"
+            if db_path.exists():
+                return sqlite3.connect(str(db_path))
+    except Exception:
+        pass
+    
+    # Third try: Look for the specific path structure regardless of drive letter
+    try:
+        # Get all available drives
+        import string
+        from ctypes import windll
+        
+        def get_available_drives():
+            drives = []
+            bitmask = windll.kernel32.GetLogicalDrives()
+            for letter in string.ascii_uppercase:
+                if bitmask & 1:
+                    drives.append(f"{letter}:")
+                bitmask >>= 1
+            return drives
+        
+        # Check each drive for our specific path structure
+        for drive in get_available_drives():
+            path = Path(f"{drive}/My Drive/Sage Projects/tobys-terminal-3-0/tobys_terminal-3/terminal.db")
+            if path.exists():
+                return sqlite3.connect(str(path))
+    except Exception:
+        pass
+    
+    # Fourth try: Search for the database file by name
+    try:
+        # Start from the current directory and search upwards
+        current_dir = Path.cwd()
+        for i in range(5):  # Look up to 5 levels up
+            search_dir = current_dir
+            for _ in range(i):
+                if search_dir.parent:
+                    search_dir = search_dir.parent
+            
+            # Search for terminal.db in this directory and subdirectories
+            for path in search_dir.glob('**/terminal.db'):
+                if path.is_file():
+                    return sqlite3.connect(str(path))
+    except Exception:
+        pass
+    
+    # If we get here, we couldn't find the database
+    raise FileNotFoundError(
+        "Could not find terminal.db in any expected location. "
+        "Please ensure the database file exists and is accessible."
+    )
 
 
 def initialize_db():

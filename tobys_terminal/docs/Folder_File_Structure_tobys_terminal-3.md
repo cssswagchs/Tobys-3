@@ -25,31 +25,44 @@ tobys_terminal-3
 │   │   │   ├── auth.py
 │   │   │   ├── lori.py
 │   │   │   ├── harlestons.py
-│   │   │   └── imm.py
-│   │   └── templates
-│   │       ├── __init__.py
-│   │       ├── login.html
-│   │       ├── error.html
-│   │       ├── dataimaging.html
-│   │       ├── 500.html
-│   │       ├── 404.html
-│   │       ├── customer_invoices.html
-│   │       ├── customer_portal.html
-│   │       ├── index.html
-│   │       ├── lori_dashboard.html
-│   │       ├── harlestons_landing.html
-│   │       ├── imm_landing.html
-│   │       ├── layout.html
-│   │       ├── harlestons.html
-│   │       ├── imm.html
-│   │       └── admin
-│   │           ├── __init__.py
-│   │           ├── dashboard.html
-│   │           ├── users.html
-│   │           ├── edit_user.html
-│   │           ├── new_user.html
-│   │           ├── notes.html
-│   │           └── system.html
+│   │   │   ├── imm.py
+│   │   │   └── __pycache__
+│   │   │       ├── __init__.cpython-311.pyc
+│   │   │       ├── auth.cpython-311.pyc
+│   │   │       ├── lori.cpython-311.pyc
+│   │   │       ├── dashboard.cpython-311.pyc
+│   │   │       ├── customer_portal.cpython-311.pyc
+│   │   │       ├── harlestons.cpython-311.pyc
+│   │   │       ├── imm.cpython-311.pyc
+│   │   │       ├── dataimaging.cpython-311.pyc
+│   │   │       └── admin.cpython-311.pyc
+│   │   ├── templates
+│   │   │   ├── __init__.py
+│   │   │   ├── login.html
+│   │   │   ├── error.html
+│   │   │   ├── dataimaging.html
+│   │   │   ├── 500.html
+│   │   │   ├── 404.html
+│   │   │   ├── customer_invoices.html
+│   │   │   ├── customer_portal.html
+│   │   │   ├── index.html
+│   │   │   ├── lori_dashboard.html
+│   │   │   ├── harlestons_landing.html
+│   │   │   ├── imm_landing.html
+│   │   │   ├── layout.html
+│   │   │   ├── harlestons.html
+│   │   │   ├── imm.html
+│   │   │   └── admin
+│   │   │       ├── __init__.py
+│   │   │       ├── dashboard.html
+│   │   │       ├── users.html
+│   │   │       ├── edit_user.html
+│   │   │       ├── new_user.html
+│   │   │       ├── notes.html
+│   │   │       └── system.html
+│   │   └── __pycache__
+│   │       ├── __init__.cpython-311.pyc
+│   │       └── app.cpython-311.pyc
 │   ├── desktop
 │   │   ├── __init__.py
 │   │   ├── main.py
@@ -87,7 +100,8 @@ tobys_terminal-3
 │   │   │   ├── base_view.py
 │   │   │   └── test_calendar.py
 │   │   └── __pycache__
-│   │       └── __init__.cpython-311.pyc
+│   │       ├── __init__.cpython-311.pyc
+│   │       └── main.cpython-311.pyc
 │   ├── shared
 │   │   ├── printavo_sync.py
 │   │   ├── export_csv.py
@@ -164,10 +178,15 @@ tobys_terminal-3
 │   │   │   │   │   ├── S00103_statement_IMM_Promotionals_01-01-2024_to_12-31-2024.pdf
 │   │   │   │   │   ├── S00104_statement_IMM_Promotionals_01-01-2025_to_01-31-2025.pdf
 │   │   │   │   │   ├── S00116_statement_IMM_Promotionals_01-01-2020_to_12-31-2020.pdf
-│   │   │   │   │   ├── S00117_statement_IMM_Promotionals_05-01-2025_to_05-31-2025.pdf
 │   │   │   │   │   ├── S00118_statement_IMM_Promotionals_05-01-2025_to_05-31-2025.pdf
 │   │   │   │   │   ├── S00119_statement_IMM_Promotionals_06-01-2025_to_06-30-2025.pdf
-│   │   │   │   │   └── S00120_statement_IMM_Promotionals_07-01-2025_to_07-31-2025.pdf
+│   │   │   │   │   ├── S00120_statement_IMM_Promotionals_07-01-2025_to_07-31-2025.pdf
+│   │   │   │   │   ├── dnu
+│   │   │   │   │   │   ├── S00120_statement_IMM_Promotionals_07-01-2025_to_07-31-2025_20250909_075603.pdf
+│   │   │   │   │   │   ├── S00120_statement_IMM_Promotionals_07-01-2025_to_07-31-2025_20250909_175648.pdf
+│   │   │   │   │   │   ├── S00120_statement_IMM_Promotionals_07-01-2025_to_07-31-2025_20250909_180324.pdf
+│   │   │   │   │   │   └── S00120_statement_IMM_Promotionals_07-01-2025_to_07-31-2025_20250909_181042.pdf
+│   │   │   │   │   └── S00129_statement_IMM_Promotionals_08-01-2025_to_08-31-2025.pdf
 │   │   │   │   ├── BDVIbez
 │   │   │   │   │   └── S00031_statement_BDVIbez_Full_Range.pdf
 │   │   │   │   ├── Digital_Graphics
@@ -213,8 +232,27 @@ tobys_terminal-3
 │   │   │   │       ├── S00089_statement_Harlestons_06-09-2025_to_06-15-2025.pdf
 │   │   │   │       ├── S00124_statement_Harlestons_08-18-2025_to_08-24-2025.pdf
 │   │   │   │       ├── dnu
-│   │   │   │       │   └── S00089_statement_Harlestons_06-09-2025_to_06-15-2025_20250829_100444.pdf
-│   │   │   │       └── S00125_statement_Harlestons_08-25-2025_to_08-31-2025.pdf
+│   │   │   │       │   ├── S00089_statement_Harlestons_06-09-2025_to_06-15-2025_20250829_100444.pdf
+│   │   │   │       │   ├── S00075_statement_Harlestons_03-03-2025_to_03-07-2025_20250908_162727.pdf
+│   │   │   │       │   ├── S00076_statement_Harlestons_03-10-2025_to_03-14-2025_20250908_162913.pdf
+│   │   │   │       │   ├── S00077_statement_Harlestons_03-17-2025_to_03-21-2025_20250908_162928.pdf
+│   │   │   │       │   ├── S00078_statement_Harlestons_03-24-2025_to_03-31-2025_20250908_162946.pdf
+│   │   │   │       │   ├── S00081_statement_Harlestons_04-14-2025_to_04-20-2025_20250908_163012.pdf
+│   │   │   │       │   ├── S00083_statement_Harlestons_04-28-2025_to_05-04-2025_20250908_163049.pdf
+│   │   │   │       │   ├── S00089_statement_Harlestons_06-09-2025_to_06-15-2025_20250908_163129.pdf
+│   │   │   │       │   ├── S00090_statement_Harlestons_06-16-2025_to_06-22-2025_20250908_163145.pdf
+│   │   │   │       │   ├── S00091_statement_Harlestons_06-23-2025_to_06-29-2025_20250908_163208.pdf
+│   │   │   │       │   ├── S00092_statement_Harlestons_06-30-2025_to_07-06-2025_20250908_163247.pdf
+│   │   │   │       │   ├── S00093_statement_Harlestons_07-07-2025_to_07-13-2025_20250908_163301.pdf
+│   │   │   │       │   ├── S00092_statement_Harlestons_06-30-2025_to_07-06-2025_20250908_165619.pdf
+│   │   │   │       │   ├── S00092_statement_Harlestons_06-30-2025_to_07-06-2025_20250908_172825.pdf
+│   │   │   │       │   └── S00093_statement_Harlestons_07-07-2025_to_07-13-2025_20250908_172848.pdf
+│   │   │   │       ├── S00125_statement_Harlestons_08-25-2025_to_08-31-2025.pdf
+│   │   │   │       ├── S00126_statement_Harlestons_08-25-2025_to_08-31-2025.pdf
+│   │   │   │       ├── S00127_statement_Harlestons_09-01-2025_to_09-07-2025.pdf
+│   │   │   │       ├── statement_register-9-8-25.csv
+│   │   │   │       ├── S00128_statement_Harlestons_08-25-2025_to_08-31-2025.pdf
+│   │   │   │       └── 9-8-25 Statement Register.pdf
 │   │   │   ├── ar_reports
 │   │   │   │   └── AR_Summary_20250831.pdf
 │   │   │   ├── __pycache__
@@ -237,7 +275,9 @@ tobys_terminal-3
 │   │   │   ├── import_printavo_orders.cpython-311.pyc
 │   │   │   ├── printavo_sync.cpython-311.pyc
 │   │   │   ├── imm_import.cpython-311.pyc
-│   │   │   └── pdf_style.cpython-311.pyc
+│   │   │   ├── pdf_style.cpython-311.pyc
+│   │   │   ├── auth_utils.cpython-311.pyc
+│   │   │   └── invoice_logic.cpython-311.pyc
 │   │   ├── imm_import.py
 │   │   └── pdf_style.py
 │   └── docs
@@ -259,16 +299,21 @@ tobys_terminal-3
 │   └── requires.txt
 ├── terminal.db
 ├── __pycache__
-│   └── config.cpython-311.pyc
+│   ├── config.cpython-311.pyc
+│   └── __init__.cpython-311.pyc
 ├── logs
 │   ├── printavo_sync_20250905.log
 │   ├── printavo_sync_20250906.log
-│   └── printavo_sync_20250907.log
+│   ├── printavo_sync_20250907.log
+│   ├── printavo_sync_20250908.log
+│   └── printavo_sync_20250909.log
 ├── Printavo Synchronization System.md
 ├── data_imports
 │   ├── orders.csv
 │   ├── payments.csv
 │   └── customers.csv
 ├── optimization_report.py
-└── imm_reports
-    └── IMM_Production_full_20250907.pdf
+├── imm_reports
+│   └── IMM_Production_full_20250907.pdf
+└── .vscode
+    └── launch.json
